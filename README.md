@@ -9,8 +9,9 @@ Formerly bd-board. The old names still work: `bd-board` runs the same CLI (it pr
 ## requirements
 
 - Node 22+
-- `bd` on PATH
+- `bd` on PATH (set `BD_BOARD_BD` to the executable to use another one)
 - a beads repository
+- Linux, macOS or Windows; the systemd service is Linux only
 
 ## run
 
@@ -43,6 +44,8 @@ Install the launcher once to run it from anywhere:
 ```bash
 ln -s "$PWD/bin/beadside.mjs" ~/.local/bin/beadside
 ```
+
+On Windows, run `npm link` in the clone instead; it puts a `beadside` command next to your other global npm commands. An npm-installed `bd` (a `bd.cmd` shim) is followed to its `bd.exe`, since the board never runs `bd` through a shell. `beadside start` runs with no console window, and `beadside stop` ends the board outright, as Windows has no SIGTERM to handle.
 
 ### search from a terminal or an agent
 
