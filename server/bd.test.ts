@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { assertId, assertLabel, BdError, BeadsClient, type Issue, type RunResult, type Runner } from './bd'
+import { assertId, assertLabel, BdError, BeadsClient, resolveBd, type BdLookupFs, type Issue, type RunResult, type Runner } from './bd'
 
 const issueRecord = (overrides: Record<string, unknown> = {}) => ({
   id: 'repo-abc',
@@ -69,6 +69,55 @@ describe('validation', () => {
     await expect(client.setLabels('repo-abc', ['two words'])).rejects.toThrow(BdError)
     await expect(client.comment('repo-abc', '   ')).rejects.toThrow(BdError)
     expect(calls).toEqual([])
+  })
+})
+
+describe('finding bd', () => {
+  const NPM = String.raw`C:\nvm4w\nodejs`
+  const SHIM = String.raw`@ECHO off
+endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\node_modules\@beads\bd\bin\bd.js" %*
+`
+  const SCRIPT = String.raw`${NPM}\node_modules\@beads\bd\bin\bd.js`
+  const NATIVE = String.raw`${NPM}\node_modules\@beads\bd\bin\bd.exe`
+  const CMD = String.raw`${NPM}\bd.cmd`
+
+  /** a filesystem holding exactly these files */
+  const files = (entries: Record<string, string>): BdLookupFs => ({
+    exists: (path) => path in entries,
+    read: (path) => entries[path] ?? null,
+  })
+
+  it('keeps plain bd from PATH off windows', () => {
+    expect(resolveBd({ PATH: '/usr/bin' }, 'linux', files({}))).toEqual({ file: 'bd', prefix: [] })
+  })
+
+  it('follows the npm bd.cmd shim to the native bd.exe', () => {
+    const fs = files({ [CMD]: SHIM, [SCRIPT]: '', [NATIVE]: '' })
+    expect(resolveBd({ Path: String.raw`C:\Windows;${NPM}` }, 'win32', fs)).toEqual({ file: NATIVE, prefix: [] })
+  })
+
+  it('runs the shim script through node when no native binary sits next to it', () => {
+    const fs = files({ [CMD]: SHIM, [SCRIPT]: '' })
+    expect(resolveBd({ PATH: NPM }, 'win32', fs)).toEqual({ file: process.execPath, prefix: [SCRIPT] })
+  })
+
+  it('takes a bd.exe on PATH as it is', () => {
+    const tool = String.raw`C:\tools\bd.exe`
+    const fs = files({ [tool]: '', [CMD]: SHIM, [NATIVE]: '' })
+    expect(resolveBd({ PATH: String.raw`"C:\tools";${NPM}` }, 'win32', fs)).toEqual({ file: tool, prefix: [] })
+  })
+
+  it('falls back to plain bd when nothing on PATH resolves', () => {
+    expect(resolveBd({ PATH: NPM }, 'win32', files({}))).toEqual({ file: 'bd', prefix: [] })
+  })
+
+  it('lets BD_BOARD_BD override the lookup', () => {
+    const fs = files({ [CMD]: SHIM, [NATIVE]: '' })
+    const exe = String.raw`D:\bd\bd.exe`
+    expect(resolveBd({ BD_BOARD_BD: '/opt/bd/bd', PATH: '/usr/bin' }, 'linux', fs)).toEqual({ file: '/opt/bd/bd', prefix: [] })
+    expect(resolveBd({ BD_BOARD_BD: exe, PATH: NPM }, 'win32', fs)).toEqual({ file: exe, prefix: [] })
+    expect(resolveBd({ BD_BOARD_BD: SCRIPT, PATH: NPM }, 'win32', fs)).toEqual({ file: process.execPath, prefix: [SCRIPT] })
+    expect(resolveBd({ BD_BOARD_BD: CMD }, 'win32', fs)).toEqual({ file: NATIVE, prefix: [] })
   })
 })
 
@@ -314,3 +363,4 @@ describe('priority, labels and create', () => {
     await expect(new BeadsClient('/repo', runner).issues()).rejects.toThrow('bd exploded')
   })
 })
+

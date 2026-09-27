@@ -1,6 +1,8 @@
 // the only place in beadside that runs `bd`. every method maps to one fixed
 // argument shape; nothing the client sends ever becomes a flag.
 import { execFile, spawn } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { extname, win32 } from 'node:path'
 
 export type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'pinned' | 'closed'
 
@@ -131,23 +133,109 @@ function assertText(text: unknown, what: string): string {
   return trimmed
 }
 
+/** the program and leading arguments that run `bd`; `prefix` carries the script when `file` is node */
+export interface BdCommand {
+  file: string
+  prefix: string[]
+}
+
+/** filesystem reads resolveBd needs, injected in tests */
+export interface BdLookupFs {
+  exists(path: string): boolean
+  read(path: string): string | null
+}
+
+const realFs: BdLookupFs = {
+  exists: existsSync,
+  read: (path) => {
+    try {
+      return readFileSync(path, 'utf8')
+    } catch {
+      return null
+    }
+  },
+}
+
+/** env var naming the bd executable (or a `bd.js`) to run instead of the one on PATH */
+export const BD_OVERRIDE_ENV = 'BD_BOARD_BD'
+
+/** reads an env var the way windows does, whatever the key's case in a copied env object */
+function envValue(env: NodeJS.ProcessEnv, key: string, platform: NodeJS.Platform): string | undefined {
+  if (platform !== 'win32') return env[key]
+  const match = Object.keys(env).find((name) => name.toUpperCase() === key)
+  return match === undefined ? undefined : env[match]
+}
+
+/** a `.js` entry runs through this node; anything else is spawned as it is */
+function commandFor(path: string): BdCommand {
+  return /^\.[cm]?js$/i.test(extname(path)) ? { file: process.execPath, prefix: [path] } : { file: path, prefix: [] }
+}
+
+/**
+ * follows an npm `bd.cmd` shim to what it runs: the native `bd.exe` next to the shim's
+ * script when there is one (the @beads/bd package ships it there), otherwise the script via node.
+ */
+function followCmdShim(shim: string, fs: BdLookupFs): BdCommand | null {
+  const text = fs.read(shim)
+  if (!text) return null
+  const target = /"%dp0%\\([^"]+)"\s+%\*/.exec(text)?.[1]
+  if (!target) return null
+  const script = win32.join(win32.dirname(shim), target)
+  const native = win32.join(win32.dirname(script), 'bd.exe')
+  if (fs.exists(native)) return { file: native, prefix: [] }
+  return fs.exists(script) ? commandFor(script) : null
+}
+
+/**
+ * finds what to spawn for `bd` without a shell. linux and macos keep plain `bd` from PATH.
+ * windows cannot spawn an npm `bd.cmd` shim without cmd.exe, so the shim is followed to the
+ * real binary; a `bd.exe` found first on PATH is used directly. BD_BOARD_BD overrides both.
+ */
+export function resolveBd(
+  env: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
+  fs: BdLookupFs = realFs,
+): BdCommand {
+  const override = envValue(env, BD_OVERRIDE_ENV, platform)?.trim()
+  if (override) {
+    if (platform === 'win32' && /\.(cmd|bat)$/i.test(override)) return followCmdShim(override, fs) ?? commandFor(override)
+    return commandFor(override)
+  }
+  if (platform !== 'win32') return { file: 'bd', prefix: [] }
+  for (const raw of (envValue(env, 'PATH', platform) ?? '').split(';')) {
+    const dir = raw.trim().replace(/^"(.*)"$/, '$1')
+    if (!dir) continue
+    const exe = win32.join(dir, 'bd.exe')
+    if (fs.exists(exe)) return { file: exe, prefix: [] }
+    const shim = win32.join(dir, 'bd.cmd')
+    if (fs.exists(shim)) {
+      const followed = followCmdShim(shim, fs)
+      if (followed) return followed
+    }
+  }
+  return { file: 'bd', prefix: [] }
+}
+
 /**
  * spawns the real `bd` binary in the repo, never through a shell. `actor` pins BEADS_ACTOR so
  * a board started from inside an agent session still writes its audit trail as the human.
  */
-export function nodeRunner(repo: string, actor?: string): Runner {
+export function nodeRunner(repo: string, actor?: string, bd: BdCommand = resolveBd()): Runner {
   const env: NodeJS.ProcessEnv = { ...process.env, NO_COLOR: '1' }
   if (actor) env['BEADS_ACTOR'] = actor
   return (args) =>
     new Promise((resolve, reject) => {
       execFile(
-        'bd',
-        args,
-        { cwd: repo, timeout: RUN_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, env },
+        bd.file,
+        [...bd.prefix, ...args],
+        // windowsHide keeps a board with no console (bd-board start) from flashing a window per call
+        { cwd: repo, timeout: RUN_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024, env, windowsHide: true },
         (error, stdout, stderr) => {
           if (!error) return resolve({ stdout, stderr, code: 0 })
           const failure = error as NodeJS.ErrnoException & { code?: number | string; killed?: boolean }
-          if (failure.code === 'ENOENT') return reject(new BdError('bd was not found on PATH', 500))
+          if (failure.code === 'ENOENT') {
+            return reject(new BdError(`bd was not found on PATH; set ${BD_OVERRIDE_ENV} to its path`, 500))
+          }
           if (failure.killed) return reject(new BdError('bd command timed out', 504))
           resolve({ stdout, stderr, code: typeof failure.code === 'number' ? failure.code : 1 })
         },
@@ -182,7 +270,7 @@ export const FOLLOW_POLL_MS = 3_000
  * bd) waits on it until its timeout. a read takes about 0.2 s and waits its turn behind a
  * sync. a read that exits nonzero ends the follow, as a `--follow` child dying would.
  */
-export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS): Follower {
+export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS, bd: BdCommand = resolveBd()): Follower {
   return (since, handlers) => {
     let seq = since
     let stopped = false
@@ -201,10 +289,11 @@ export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS): Follower {
     const read = () => {
       timer = null
       if (stopped) return
-      const run = spawn('bd', ['events', 'tail', '--since', String(seq)], {
+      const run = spawn(bd.file, [...bd.prefix, 'events', 'tail', '--since', String(seq)], {
         cwd: repo,
         env: { ...process.env, NO_COLOR: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
+        windowsHide: true,
       })
       child = run
       let pending = ''
