@@ -1,10 +1,10 @@
 // background mode: `beadside start` detaches a board and `beadside stop` ends it,
 // both keyed by the repo path through a small state file per repo.
-import { spawn } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 
 export interface BoardState {
   pid: number
@@ -13,19 +13,33 @@ export interface BoardState {
   repo: string
 }
 
-/** where the state and log files live; the runtime dir clears on reboot, so no board outlives its pid */
-export function stateDir(env: NodeJS.ProcessEnv = process.env): string {
-  return join(env['XDG_RUNTIME_DIR'] || tmpdir(), 'beadside')
+/**
+ * the parent of the state dir; the runtime dir clears on reboot, so no board outlives its pid.
+ * windows has none, and its temp dir depends on the shell, so it uses the local app data dir.
+ */
+function stateRoot(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string {
+  const fallback = platform === 'win32' && env['LOCALAPPDATA'] ? env['LOCALAPPDATA'] : tmpdir()
+  return env['XDG_RUNTIME_DIR'] || fallback
+}
+
+/** where the state and log files live */
+export function stateDir(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  return join(stateRoot(env, platform), 'beadside')
 }
 
 /** the state dir from before the rename to beadside; a board started under the old name wrote here */
-export function legacyStateDir(env: NodeJS.ProcessEnv = process.env): string {
-  return join(env['XDG_RUNTIME_DIR'] || tmpdir(), 'bd-board')
+export function legacyStateDir(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  return join(stateRoot(env, platform), 'bd-board')
+}
+
+/** the repo path as the state key; windows paths are case-insensitive, so a drive letter or folder typed in another case finds the same board */
+export function repoKey(repo: string, platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? repo.toLowerCase() : repo
 }
 
 /** one file stem per repo path, so any cwd resolving to the same repo finds the same board */
 export function stateStem(repo: string, dir = stateDir()): string {
-  return join(dir, createHash('sha1').update(repo).digest('hex').slice(0, 12))
+  return join(dir, createHash('sha1').update(repoKey(repo)).digest('hex').slice(0, 12))
 }
 
 /** true when a process with this pid exists */
@@ -38,16 +52,41 @@ export function alive(pid: number): boolean {
   }
 }
 
-/** the running board for this repo, or null; a state file left by a dead process is removed */
-export function readState(repo: string, dir = stateDir()): BoardState | null {
-  const file = `${stateStem(repo, dir)}.json`
-  let state: BoardState
+/**
+ * false when the pid now belongs to something other than node. windows hands out pids again
+ * quickly and its state dir survives a reboot, so a stale file could name an unrelated process
+ * that `stop` would then kill. elsewhere, and when tasklist cannot answer, the pid is trusted.
+ */
+export function runsNode(pid: number, platform: NodeJS.Platform = process.platform): boolean {
+  if (platform !== 'win32') return true
   try {
-    state = JSON.parse(readFileSync(file, 'utf8')) as BoardState
+    const row = execFileSync('tasklist', ['/FI', `PID eq ${pid}`, '/FO', 'CSV', '/NH'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
+    })
+    const image = /^"([^"]*)"/.exec(row.trim())?.[1]
+    return image === undefined || image.toLowerCase() === basename(process.execPath).toLowerCase()
+  } catch {
+    return true
+  }
+}
+
+/** the state file's contents as written, without checking the process */
+function readStateFile(file: string): BoardState | null {
+  try {
+    return JSON.parse(readFileSync(file, 'utf8')) as BoardState
   } catch {
     return null
   }
-  if (alive(state.pid)) return state
+}
+
+/** the running board for this repo, or null; a state file left by a dead process is removed */
+export function readState(repo: string, dir = stateDir()): BoardState | null {
+  const file = `${stateStem(repo, dir)}.json`
+  const state = readStateFile(file)
+  if (!state) return null
+  if (alive(state.pid) && runsNode(state.pid)) return state
   rmSync(file, { force: true })
   return null
 }
@@ -90,12 +129,15 @@ export async function startDetached(repo: string, serverArgs: string[], timeoutM
   const child = spawn(process.execPath, [...process.execArgv, process.argv[1]!, ...serverArgs], {
     detached: true,
     stdio: ['ignore', out, out],
+    // no console window on windows; detached already leaves the child without one
+    windowsHide: true,
   })
   child.unref()
 
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    const state = readState(repo, dir)
+    // the child's own pid is known, so the file is read without the slower process check
+    const state = readStateFile(`${stateStem(repo, dir)}.json`)
     if (state && state.pid === child.pid) return state
     if (child.exitCode !== null || !alive(child.pid!)) break
     await new Promise((done) => setTimeout(done, 150))
@@ -104,12 +146,18 @@ export async function startDetached(repo: string, serverArgs: string[], timeoutM
   throw new Error(`the board did not start; see ${log}`)
 }
 
-/** sends SIGTERM and waits for the process to go away */
-export async function stopBoard(state: BoardState, timeoutMs = 5000): Promise<boolean> {
+/**
+ * sends SIGTERM and waits for the process to go away. on windows SIGTERM ends the process
+ * outright, so it cannot clear its own state file; the file is cleared here instead.
+ */
+export async function stopBoard(state: BoardState, timeoutMs = 5000, dir = stateDir()): Promise<boolean> {
   process.kill(state.pid, 'SIGTERM')
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
-    if (!alive(state.pid)) return true
+    if (!alive(state.pid)) {
+      clearState(state.repo, state.pid, dir)
+      return true
+    }
     await new Promise((done) => setTimeout(done, 100))
   }
   return false
