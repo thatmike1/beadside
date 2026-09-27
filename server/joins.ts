@@ -2,7 +2,7 @@
 // (AgentsView, optional) and notes files that mention it (local files).
 import { readdir, readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, relative } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 
 export interface SessionHit {
@@ -206,7 +206,8 @@ export async function notesFor(
         if (entry.name === 'node_modules' || entry.name === '.git') continue
         await walk(full)
       } else if (entry.isFile() && entry.name.endsWith('.md')) {
-        mdFiles.push(relative(baseDir, full))
+        // forward slashes on every platform, so the api reports the same path everywhere
+        mdFiles.push(relative(baseDir, full).split(sep).join('/'))
       }
     }
   }
