@@ -128,7 +128,7 @@ export function createBoard(config: AppConfig): Board {
   const { client, repo, agentsview } = config
   const token = config.token ?? newToken()
   const boardConfig = config.config ?? resolveConfig({})
-  const human = config.human ?? defaultHuman(process.env['USER'] ?? 'unknown')
+  const human = config.human ?? defaultHuman(process.env['USER'] ?? process.env['USERNAME'] ?? 'unknown')
   const uiDist = config.uiDist ?? null
   const device = config.device ?? deviceName()
 

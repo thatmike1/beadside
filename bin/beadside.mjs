@@ -18,5 +18,11 @@ const child = spawn(process.execPath, ['--disable-warning=ExperimentalWarning', 
   cwd: process.cwd(),
 })
 
-for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal))
+if (process.platform === 'win32') {
+  // Ctrl-C and Ctrl-Break reach every process on the console, the server included, and
+  // child.kill() on windows would end it outright before it cleans up; so only wait for it
+  for (const signal of ['SIGINT', 'SIGBREAK']) process.on(signal, () => {})
+} else {
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal))
+}
 child.on('exit', (code, signal) => process.exit(signal ? 1 : (code ?? 0)))

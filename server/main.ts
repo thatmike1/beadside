@@ -74,7 +74,7 @@ export function repoNameFromId(id: string): string | null {
 }
 
 /**
- * the local user's name: git user.name, then $USER. BEADS_ACTOR is deliberately ignored,
+ * the local user's name: git user.name, then $USER (%USERNAME% on windows). BEADS_ACTOR is deliberately ignored,
  * because agent sessions set it and a board started from one must still write as the human.
  */
 export function resolveUserName(repoPath: string): string {
@@ -83,12 +83,13 @@ export function resolveUserName(repoPath: string): string {
       cwd: repoPath,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      windowsHide: true,
     }).trim()
     if (gitUser) return gitUser
   } catch {
     // git config not found or failed
   }
-  const envUser = process.env['USER']?.trim()
+  const envUser = (process.env['USER'] ?? process.env['USERNAME'])?.trim()
   if (envUser) return envUser
   return 'unknown'
 }
@@ -200,7 +201,7 @@ export function openBrowser(url: string): void {
     cmd = 'xdg-open'
     args = [url]
   }
-  const child = spawn(cmd, args, { stdio: 'ignore', detached: true })
+  const child = spawn(cmd, args, { stdio: 'ignore', detached: true, windowsHide: true })
   child.on('error', () => console.error(`beadside: could not run ${cmd}; open the url yourself`))
   child.unref()
 }
@@ -363,9 +364,12 @@ async function main(): Promise<void> {
     if ('closeAllConnections' in server) server.closeAllConnections()
     setTimeout(() => process.exit(0), 2000).unref()
   }
+  // on windows SIGINT is Ctrl-C, SIGBREAK Ctrl-Break and SIGHUP a closed console window;
+  // `beadside stop` and task manager end the process outright, and stop clears the state file
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
   process.on('SIGHUP', stop)
+  if (process.platform === 'win32') process.on('SIGBREAK', stop)
 }
 
 // only run when executed, so tests can import the helpers
