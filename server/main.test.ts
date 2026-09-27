@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createServer } from 'node:net'
+import { resolve } from 'node:path'
 import { resolveConfig } from './config'
 import { firstFreePort, formatSearch, parseOptions, parseSearchOptions, repoNameFromId, resolveHuman } from './main'
 
@@ -25,7 +26,7 @@ describe('cli flags', () => {
       '--no-open',
     ])
     expect(options).toEqual({
-      repo: '/tmp',
+      repo: resolve('/tmp'),
       port: 4198,
       config: '/tmp/custom.json',
       agentsview: 'http://x:1',
@@ -90,7 +91,7 @@ describe('human identity', () => {
 describe('search cli', () => {
   it('joins positionals into the query and reads the flags', () => {
     expect(parseSearchOptions(['comment', 'author', '--scope', 'closed', '--json', '--limit', '5', '--repo', '/tmp'])).toEqual({
-      repo: '/tmp',
+      repo: resolve('/tmp'),
       config: undefined,
       query: 'comment author',
       scope: 'closed',
