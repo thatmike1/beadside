@@ -10,6 +10,7 @@ import { DetailPane, type RevealTarget } from './components/detail-pane'
 import { Toast } from './components/toast'
 import { useToast } from './use-toast'
 import { useFolds } from './use-folds'
+import { useLive } from './use-live'
 import { writeSelectionHash } from './navigation'
 
 const EMPTY_CONFIG: BoardConfig = {
@@ -28,6 +29,8 @@ const EMPTY_CONFIG: BoardConfig = {
 }
 
 const SEARCH_DEBOUNCE_MS = 180
+/** polling while the server's live feed is off or unreachable */
+const POLL_MS = 20_000
 
 interface WriteSpec {
   /** local guess applied before the server answers */
@@ -41,6 +44,7 @@ interface WriteSpec {
 /** the whole board: dense index on the left, one bead open on the right */
 export function App() {
   const qc = useQueryClient()
+  const live = useLive(qc)
   const toaster = useToast()
   const folds = useFolds()
   const { setFolded } = folds
@@ -56,7 +60,7 @@ export function App() {
   const issuesQuery = useQuery({
     queryKey: ['issues'],
     queryFn: api.getIssues,
-    refetchInterval: 20_000,
+    refetchInterval: live ? false : POLL_MS,
     refetchOnWindowFocus: true,
   })
 
@@ -85,7 +89,7 @@ export function App() {
     queryFn: ({ signal }) => api.search(searchQuery, scope, signal),
     enabled: searchQuery.length > 0,
     placeholderData: keepPreviousData,
-    refetchInterval: 20_000,
+    refetchInterval: live ? false : POLL_MS,
     refetchOnWindowFocus: true,
   })
   const searchResult = searching ? searchQueryResult.data : undefined

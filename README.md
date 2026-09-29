@@ -163,6 +163,16 @@ If your beads carry no labels yet, write the config and the agent block above fi
 - **Notes directory**: set `"notesDir": "docs/notes"` to recursively scan a folder of markdown notes and link occurrences of the bead ID.
 - **T3 Code**: thread titles from `~/.t3/userdata/state.sqlite` are discovered automatically when present.
 
+## live updates
+
+With beads 1.3.0 or newer, turn on the events journal in the beads repo and restart the board:
+
+```bash
+bd config set events-journal true
+```
+
+The board then follows the journal and refreshes open tabs within about a second of any `bd` write, from an agent or a terminal. Changes pulled in by `bd dolt pull` or `bd sync` never reach the journal, so they show up within 2 minutes instead. Without the journal the board polls every 20 seconds, and its log says why.
+
 ## run as a service
 
 Install bd-board as a systemd user service:

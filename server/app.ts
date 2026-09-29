@@ -1,15 +1,17 @@
 // the http surface described in docs/api.md. every route maps to one fixed bd
 // argument shape; the client never gets to name a command or a flag.
-import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
+import { streamSSE } from 'hono/streaming'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { classifyAuthor, defaultHuman, type HumanIdentity } from './authors'
 import { BdError, type BeadsClient, type Issue, type IssueWithComments, type Status } from './bd'
 import { resolveConfig, type ResolvedBoardConfig } from './config'
 import { notesFor, sessionsFor } from './joins'
+import { LiveFeed, type LiveFeedOptions, type LiveState } from './live'
 import { DEFAULT_LIMIT, SCOPES, searchIssues, type SearchScope } from './search'
 
 export interface AppConfig {
@@ -23,6 +25,22 @@ export interface AppConfig {
   config?: ResolvedBoardConfig
   /** absolute path to the built ui, served at / when it exists */
   uiDist?: string | null
+  /** follow the events journal and push changes; off unless given (tests stay spawn-free) */
+  live?: LiveOptions | false
+}
+
+export type LiveOptions = Partial<Omit<LiveFeedOptions, 'follow' | 'onChange' | 'onState'>> & {
+  /** how often a live board re-exports anyway, for changes the journal never sees (a sync) */
+  reconcileMs?: number
+}
+
+/** a message on `/api/events` */
+export type BoardEvent = { type: 'state'; live: boolean } | { type: 'changed' }
+
+export interface Board {
+  app: Hono
+  /** stops the journal follower and the timers; the http server is the caller's */
+  close(): void
 }
 
 /** a fresh per-launch token for the x-bd-token header */
@@ -76,30 +94,109 @@ function stringArray(value: unknown, what: string): string[] {
 /** how long a search may reuse the last `bd export` before reading the ledger again */
 const CORPUS_MAX_AGE_MS = 5_000
 const MAX_SEARCH_LIMIT = 500
+const RECONCILE_MS = 120_000
+const KEEPALIVE_MS = 25_000
 
-/** builds the Hono app; `serve` in main.ts binds it to 127.0.0.1 */
-export function createApp(config: AppConfig) {
+interface CorpusEntry {
+  at: number
+  corpus: IssueWithComments[]
+  fingerprint: string
+}
+
+/** builds the Hono app alone, for callers that never turn the live feed on */
+export function createApp(config: AppConfig): Hono {
+  return createBoard(config).app
+}
+
+/** builds the Hono app and its live feed; `serve` in main.ts binds the app to 127.0.0.1 */
+export function createBoard(config: AppConfig): Board {
   const { client, repo, agentsview } = config
   const token = config.token ?? newToken()
   const boardConfig = config.config ?? resolveConfig({})
   const human = config.human ?? defaultHuman(process.env['USER'] ?? 'unknown')
   const uiDist = config.uiDist ?? null
 
-  // one export serves the list and search; any write from this board drops it
-  let corpusCache: { at: number; corpus: IssueWithComments[] } | null = null
-  const loadCorpus = async (maxAgeMs: number): Promise<IssueWithComments[]> => {
-    if (corpusCache && Date.now() - corpusCache.at <= maxAgeMs) return corpusCache.corpus
-    const corpus = await client.corpus()
-    corpusCache = { at: Date.now(), corpus }
-    return corpus
+  // one export serves the list, search and ids. without the live feed a list read always
+  // re-exports; with it the cache holds until the feed, a write or the reconcile says otherwise.
+  // `generation` keeps an export that started before an invalidation from landing after it.
+  let cache: CorpusEntry | null = null
+  let inflight: { generation: number; promise: Promise<CorpusEntry> } | null = null
+  let generation = 0
+  const invalidate = () => {
+    generation += 1
+    cache = null
   }
+  const exportCorpus = (): Promise<CorpusEntry> => {
+    if (inflight && inflight.generation === generation) return inflight.promise
+    const started = generation
+    const promise = client
+      .corpus()
+      .then((corpus) => {
+        const entry = { at: Date.now(), corpus, fingerprint: fingerprintOf(corpus) }
+        if (started === generation) cache = entry
+        return entry
+      })
+      .finally(() => {
+        if (inflight?.promise === promise) inflight = null
+      })
+    inflight = { generation: started, promise }
+    return promise
+  }
+  const loadCorpus = async (maxAgeMs: number): Promise<IssueWithComments[]> => {
+    if (cache && Date.now() - cache.at < maxAgeMs) return cache.corpus
+    return (await exportCorpus()).corpus
+  }
+
+  // browsers on /api/events
+  const listeners = new Set<(event: BoardEvent) => void>()
+  const broadcast = (event: BoardEvent) => {
+    for (const listener of listeners) listener(event)
+  }
+
+  // live feed: journal records re-export and announce; the reconcile catches what the journal
+  // cannot see (a sync lands rows as data) and announces only when the ledger really moved
+  const liveOptions = config.live === undefined || config.live === false ? null : config.live
+  let announced: string | null = null
+  const refresh = async (always: boolean) => {
+    invalidate()
+    try {
+      const { fingerprint } = await exportCorpus()
+      if (!always && fingerprint === announced) return
+      announced = fingerprint
+      broadcast({ type: 'changed' })
+    } catch (error) {
+      liveOptions?.log?.(`re-export failed: ${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+  let reconcile: ReturnType<typeof setInterval> | null = null
+  const feed = liveOptions
+    ? new LiveFeed({
+        ...liveOptions,
+        follow: (since, handlers) => client.follow(since, handlers),
+        onChange: () => void refresh(true),
+        onState: (state: LiveState) => {
+          if (reconcile) clearInterval(reconcile)
+          reconcile = null
+          if (state === 'live') {
+            reconcile = setInterval(() => void refresh(false), liveOptions.reconcileMs ?? RECONCILE_MS)
+            // whatever changed while the feed was down or starting
+            void refresh(true)
+          }
+          if (state !== 'starting') broadcast({ type: 'state', live: state === 'live' })
+        },
+      })
+    : null
+  const isLive = () => feed?.state === 'live'
+  // how stale a cached export may be for a read: a live board trusts the cache
+  const listAge = () => (isLive() ? Infinity : 0)
+  const searchAge = () => (isLive() ? Infinity : CORPUS_MAX_AGE_MS)
 
   // bd writes go through one dolt working set; keep them one at a time
   let writeChain: Promise<unknown> = Promise.resolve()
   const serialise = <T>(work: () => Promise<T>): Promise<T> => {
-    corpusCache = null
+    invalidate()
     const next = writeChain.then(work, work).finally(() => {
-      corpusCache = null
+      invalidate()
     })
     writeChain = next.catch(() => undefined)
     return next
@@ -129,7 +226,7 @@ export function createApp(config: AppConfig) {
   )
 
   app.get('/api/issues', async (c) => {
-    const issues = (await loadCorpus(0)).map((entry) => entry.issue)
+    const issues = (await loadCorpus(listAge())).map((entry) => entry.issue)
     return c.json({ issues, fetchedAt: new Date().toISOString() })
   })
 
@@ -144,9 +241,32 @@ export function createApp(config: AppConfig) {
       throw new BdError(`limit must be an integer between 1 and ${MAX_SEARCH_LIMIT}`)
     }
     if (!query.trim()) return c.json(searchIssues([], query, { scope, limit, human }))
-    const corpus = await loadCorpus(CORPUS_MAX_AGE_MS)
+    const corpus = await loadCorpus(searchAge())
     return c.json(searchIssues(corpus, query, { scope, limit, human }))
   })
+
+  // server-sent events: `state` on connect and whenever live updates start or stop, `changed`
+  // when the ledger moved. same-origin only, like every route but /api/issue-ids
+  app.get('/api/events', (c) =>
+    streamSSE(c, async (stream) => {
+      let closed = false
+      const send = (event: BoardEvent) => {
+        if (closed) return
+        const { type, ...data } = event
+        void stream.writeSSE({ event: type, data: JSON.stringify(data) }).catch(() => undefined)
+      }
+      listeners.add(send)
+      stream.onAbort(() => {
+        closed = true
+        listeners.delete(send)
+      })
+      send({ type: 'state', live: isLive() })
+      while (!closed) {
+        await stream.sleep(KEEPALIVE_MS)
+        if (!closed) await stream.write(': keepalive\n\n').catch(() => undefined)
+      }
+    }),
+  )
 
   // ids only, so a page that is allowed to read it cross-origin learns nothing else
   app.get('/api/issue-ids', async (c) => {
@@ -155,8 +275,8 @@ export function createApp(config: AppConfig) {
       c.header('Access-Control-Allow-Origin', origin)
       c.header('Vary', 'Origin')
     }
-    const issues = await client.issues()
-    return c.json({ ids: issues.map((issue) => issue.id) })
+    const corpus = await loadCorpus(searchAge())
+    return c.json({ ids: corpus.map((entry) => entry.issue.id) })
   })
 
   app.get('/api/issues/:id', async (c) => c.json(await detail(c.req.param('id'))))
@@ -248,5 +368,19 @@ export function createApp(config: AppConfig) {
     }
   }
 
-  return app
+  feed?.start()
+  return {
+    app,
+    close: () => {
+      feed?.stop()
+      if (reconcile) clearInterval(reconcile)
+      reconcile = null
+      listeners.clear()
+    },
+  }
+}
+
+/** a cheap identity for a whole export, to tell a real change from a no-op reconcile */
+function fingerprintOf(corpus: IssueWithComments[]): string {
+  return createHash('sha1').update(JSON.stringify(corpus)).digest('hex')
 }

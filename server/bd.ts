@@ -1,6 +1,6 @@
 // the only place in bd-board that runs `bd`. every method maps to one fixed
 // argument shape; nothing the client sends ever becomes a flag.
-import { execFile } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 
 export type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'closed'
 
@@ -117,6 +117,55 @@ export function nodeRunner(repo: string, actor?: string): Runner {
     })
 }
 
+/** what a running `bd events tail --follow` reports back, one callback per kind */
+export interface FollowHandlers {
+  /** one complete stdout line, a JSON record when the journal is on */
+  line(text: string): void
+  /** a stderr chunk; bd prints its notes and errors here */
+  stderr(text: string): void
+  /** the child ended; `code` is null when it was killed by a signal */
+  exit(code: number | null): void
+}
+
+export interface FollowHandle {
+  stop(): void
+}
+
+/** starts one journal follower from a checkpoint; injected in tests so no real `bd` is spawned */
+export type Follower = (since: number, handlers: FollowHandlers) => FollowHandle
+
+/** spawns `bd events tail --since <n> --follow` in the repo and splits its stdout into lines */
+export function nodeFollower(repo: string): Follower {
+  return (since, handlers) => {
+    const child = spawn('bd', ['events', 'tail', '--since', String(since), '--follow'], {
+      cwd: repo,
+      env: { ...process.env, NO_COLOR: '1' },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let pending = ''
+    let ended = false
+    const end = (code: number | null) => {
+      if (ended) return
+      ended = true
+      if (pending.trim()) handlers.line(pending)
+      handlers.exit(code)
+    }
+    child.stdout.setEncoding('utf8')
+    child.stdout.on('data', (chunk: string) => {
+      pending += chunk
+      const lines = pending.split('\n')
+      pending = lines.pop() ?? ''
+      for (const line of lines) if (line.trim()) handlers.line(line)
+    })
+    child.stderr.setEncoding('utf8')
+    child.stderr.on('data', (chunk: string) => handlers.stderr(chunk))
+    // ENOENT and friends arrive here instead of as an exit
+    child.on('error', () => end(127))
+    child.on('close', (code) => end(code))
+    return { stop: () => void child.kill('SIGTERM') }
+  }
+}
+
 function parseJson<T>(raw: string, what: string): T {
   try {
     return JSON.parse(raw) as T
@@ -131,11 +180,19 @@ export class BeadsClient {
   /** stored as the author of every comment this client writes; unset leaves bd's own default */
   readonly actor: string | undefined
   private readonly runner: Runner
+  private readonly follower: Follower
 
-  constructor(repo: string, runner?: Runner, options: { actor?: string } = {}) {
+  constructor(repo: string, runner?: Runner, options: { actor?: string; follower?: Follower } = {}) {
     this.repo = repo
     this.actor = options.actor
     this.runner = runner ?? nodeRunner(repo, options.actor)
+    this.follower = options.follower ?? nodeFollower(repo)
+  }
+
+  /** follows the events journal from a checkpoint; the only long-running bd the board starts */
+  follow(since: number, handlers: FollowHandlers): FollowHandle {
+    if (!Number.isInteger(since) || since < 0) throw new BdError('since must be a non-negative integer')
+    return this.follower(since, handlers)
   }
 
   /** runs one allowlisted command and returns stdout, turning a failure into a BdError */

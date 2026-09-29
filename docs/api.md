@@ -129,12 +129,21 @@ interface SessionInfo {
 | GET | `/api/issue-ids` | | `{ ids: string[] }` all statuses; readable cross-origin from the T3 Code renderer and loopback pages, which link short ids in chat |
 | GET | `/api/issues/:id` | | `IssueDetail` |
 | GET | `/api/search?q=<words>&scope=all\|open\|closed&limit=<1-500>` | | `SearchResult`, the same ranking `bd-board search` prints |
+| GET | `/api/events` | | Server-sent events, same-origin only. `state` (`{ live: boolean }`) on connect and whenever live updates start or stop; `changed` (`{}`) when the ledger moved and lists should be refetched. See Live updates |
 | POST | `/api/issues/:id/comment` | `{ text: string, clear?: boolean }` | `IssueDetail` |
 | POST | `/api/issues/:id/status` | `{ status: Status, reason?: string, until?: string }` | `{ issue }` |
 | POST | `/api/issues/:id/priority` | `{ priority: number }` | `{ issue }` |
 | POST | `/api/issues/:id/labels` | `{ add?: string[], remove?: string[] }` | `{ issue }` |
 | POST | `/api/issues` | `{ title: string, labels?: string[] }` | `{ issue }` quick capture via `bd q` |
 | DELETE | `/api/issues/:id` | | `{ deleted }`; only ids this server process created, otherwise 403. Undo for quick capture |
+
+## Live updates
+
+With the beads events journal on (`bd config set events-journal true`, bd 1.3.0 or newer), the server keeps one `bd events tail --follow` running. A burst of journal records triggers one `bd export`, and `/api/events` sends `changed`. Records are only a trigger: they carry no comment or dependency counts, so the export stays the one source of truth. While live, `/api/issues`, `/api/search` and `/api/issue-ids` read that cached export instead of exporting per request.
+
+The journal does not see rows that arrive by `bd dolt pull` or `bd sync`, so a live server also re-exports every 2 minutes and sends `changed` only when the export differs from the last one it announced.
+
+With the journal off, a bd without it, or a follower that keeps exiting, `state` reports `live: false`, lists re-export on every read, and the UI polls every 20 seconds as before.
 
 ## Server behaviour per write
 

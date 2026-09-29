@@ -7,7 +7,7 @@ import { basename, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 import { serve } from '@hono/node-server'
-import { createApp, newToken } from './app'
+import { createBoard, newToken } from './app'
 import { defaultHuman, type HumanIdentity } from './authors'
 import { BdError, BeadsClient } from './bd'
 import { loadConfig, type ResolvedBoardConfig } from './config'
@@ -323,7 +323,7 @@ async function main(): Promise<void> {
   }
 
   const uiDist = resolve(dirname(fileURLToPath(import.meta.url)), '../ui/dist')
-  const app = createApp({
+  const board = createBoard({
     client,
     repo: { name, path: options.repo },
     agentsview,
@@ -331,7 +331,9 @@ async function main(): Promise<void> {
     config,
     token: newToken(),
     uiDist,
+    live: { log: (message) => console.error(`bd-board: ${message}`) },
   })
+  const app = board.app
 
   const port = options.port ?? (await firstFreePort(DEFAULT_PORT, PORT_TRIES))
   if (port === null) {
@@ -351,7 +353,10 @@ async function main(): Promise<void> {
     }
   })
 
+  // the follower is a child process; never leave it behind
+  process.on('exit', () => board.close())
   const stop = () => {
+    board.close()
     clearState(options.repo, process.pid)
     server.close(() => process.exit(0))
   }

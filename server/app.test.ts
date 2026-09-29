@@ -2,8 +2,8 @@ import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
-import { createApp, idsOriginAllowed } from './app'
-import { BeadsClient, type Comment, type Issue, type RunResult, type Runner } from './bd'
+import { createApp, createBoard, idsOriginAllowed } from './app'
+import { BeadsClient, type Comment, type Follower, type FollowHandlers, type Issue, type RunResult, type Runner } from './bd'
 import { resolveConfig, type ResolvedBoardConfig } from './config'
 import type { NoteHit, SessionHit } from './joins'
 
@@ -358,5 +358,111 @@ describe('delete', () => {
     expect((await app.request('/api/issues/repo-new', { method: 'DELETE', headers })).status).toBe(
       403,
     )
+  })
+})
+
+describe('live updates', () => {
+  /** a live board over a scripted journal; `exports` counts every `bd export` */
+  function liveBoard(options: { reconcileMs?: number } = {}) {
+    let exports = 0
+    let title = 'a bead'
+    let handlers: FollowHandlers | null = null
+    const runner: Runner = async (args) => {
+      if (args[0] === 'export') {
+        exports += 1
+        return ok(`${JSON.stringify({ _type: 'issue', ...issueRecord({ title }) })}\n`)
+      }
+      return ok('')
+    }
+    const follower: Follower = (_since, h) => {
+      handlers = h
+      return { stop: () => undefined }
+    }
+    const board = createBoard({
+      client: new BeadsClient(repo, runner, { actor: 'human:tester', follower }),
+      repo: { name: 'repo', path: repo },
+      agentsview: null,
+      human: { id: 'human:tester', name: 'Tester' },
+      token: TOKEN,
+      config: testConfig,
+      live: { debounceMs: 5, settleMs: 10, reconcileMs: options.reconcileMs ?? 60_000 },
+    })
+    return {
+      board,
+      exports: () => exports,
+      setTitle: (next: string) => void (title = next),
+      journal: (seq: number) => handlers!.line(JSON.stringify({ seq, op: 'update', issue_id: 'repo-abc' })),
+    }
+  }
+
+  /** reads an SSE response until `event` arrives, returning every event name seen */
+  async function readUntil(response: Response, event: string, timeoutMs = 1_000): Promise<string[]> {
+    const reader = response.body!.getReader()
+    const decoder = new TextDecoder()
+    let text = ''
+    const deadline = Date.now() + timeoutMs
+    try {
+      while (Date.now() < deadline) {
+        const chunk = await Promise.race([
+          reader.read(),
+          new Promise<null>((done) => setTimeout(() => done(null), deadline - Date.now())),
+        ])
+        if (!chunk || chunk.done) break
+        text += decoder.decode(chunk.value, { stream: true })
+        const seen = [...text.matchAll(/^event: (\w+)$/gm)].map((match) => match[1]!)
+        if (seen.includes(event)) return seen
+      }
+      return [...text.matchAll(/^event: (\w+)$/gm)].map((match) => match[1]!)
+    } finally {
+      await reader.cancel()
+    }
+  }
+
+  const settle = (ms = 40) => new Promise((done) => setTimeout(done, ms))
+
+  it('announces a journal record on /api/events after one re-export', async () => {
+    const { board, exports, journal } = liveBoard()
+    await settle()
+    const response = await board.app.request('/api/events')
+    expect(response.headers.get('content-type')).toContain('text/event-stream')
+    const before = exports()
+    const reading = readUntil(response, 'changed')
+    await settle(10)
+    journal(1)
+    journal(2)
+    expect(await reading).toEqual(['state', 'changed'])
+    expect(exports()).toBe(before + 1)
+    board.close()
+  })
+
+  it('serves list reads from the cache while live', async () => {
+    const { board, exports } = liveBoard()
+    await settle()
+    await board.app.request('/api/issues')
+    const before = exports()
+    await board.app.request('/api/issues')
+    await board.app.request('/api/issue-ids')
+    expect(exports()).toBe(before)
+    board.close()
+  })
+
+  it('reconciles on a timer and announces only a real change', async () => {
+    const { board, exports, setTitle } = liveBoard({ reconcileMs: 30 })
+    await settle()
+    const quiet = await readUntil(await board.app.request('/api/events'), 'changed', 80)
+    expect(quiet).toEqual(['state'])
+    expect(exports()).toBeGreaterThan(2)
+    setTitle('synced in from another clone')
+    expect(await readUntil(await board.app.request('/api/events'), 'changed', 200)).toContain('changed')
+    const body = await json<ListBody>(await board.app.request('/api/issues'))
+    expect(body.issues[0]!.title).toBe('synced in from another clone')
+    board.close()
+  })
+
+  it('re-exports on every list read when the feed is off', async () => {
+    const { app, calls } = appFor()
+    await app.request('/api/issues')
+    await app.request('/api/issues')
+    expect(calls.filter((args) => args[0] === 'export')).toHaveLength(2)
   })
 })
