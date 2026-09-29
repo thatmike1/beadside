@@ -359,6 +359,9 @@ async function main(): Promise<void> {
     board.close()
     clearState(options.repo, process.pid)
     server.close(() => process.exit(0))
+    // open /api/events streams and keep-alive sockets hold close() open forever; drop them
+    if ('closeAllConnections' in server) server.closeAllConnections()
+    setTimeout(() => process.exit(0), 2000).unref()
   }
   process.on('SIGINT', stop)
   process.on('SIGTERM', stop)
