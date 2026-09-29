@@ -10,7 +10,7 @@ import { searchIssues } from '../server/search.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const issues = JSON.parse(readFileSync(join(here, 'demo/beads.json'), 'utf8'))
-const config = resolveConfig(JSON.parse(readFileSync(join(here, 'demo/bd-board.json'), 'utf8')))
+const config = resolveConfig(JSON.parse(readFileSync(join(here, 'demo/beadside.json'), 'utf8')))
 
 const comments = {
   'demo-wait-1': [

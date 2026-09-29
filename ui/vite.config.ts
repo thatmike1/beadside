@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 
 const here = fileURLToPath(new URL('.', import.meta.url))
 
-// root is ui/, /api goes to the bd-board server (or `npm run mock`) on 1338
+// root is ui/, /api goes to the beadside server (or `npm run mock`) on 1338
 export default defineConfig({
   root: here,
   plugins: [react()],

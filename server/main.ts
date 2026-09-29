@@ -11,7 +11,7 @@ import { createBoard, newToken } from './app'
 import { defaultHuman, type HumanIdentity } from './authors'
 import { BdError, BeadsClient } from './bd'
 import { loadConfig, type ResolvedBoardConfig } from './config'
-import { clearState, readState, startDetached, stopBoard, writeState } from './daemon'
+import { clearState, findState, startDetached, stopBoard, writeState } from './daemon'
 import { DEFAULT_LIMIT, SCOPES, searchIssues, type SearchResult, type SearchScope } from './search'
 
 const DEFAULT_PORT = 1338
@@ -27,7 +27,7 @@ export interface Options {
   open: boolean
 }
 
-/** parses `bd-board [--repo <path>] [--port <n>] [--config <path>] [--agentsview <url>|--no-agentsview] [--no-open]` */
+/** parses `beadside [--repo <path>] [--port <n>] [--config <path>] [--agentsview <url>|--no-agentsview] [--no-open]` */
 export function parseOptions(argv: string[]): Options {
   const { values } = parseArgs({
     args: argv,
@@ -107,7 +107,7 @@ export interface SearchOptions {
   json: boolean
 }
 
-/** parses `bd-board search <query…> [--scope all|open|closed] [--limit <n>] [--json] [--repo <path>] [--config <path>]` */
+/** parses `beadside search <query…> [--scope all|open|closed] [--limit <n>] [--json] [--repo <path>] [--config <path>]` */
 export function parseSearchOptions(argv: string[]): SearchOptions {
   const { values, positionals } = parseArgs({
     args: argv,
@@ -121,7 +121,7 @@ export function parseSearchOptions(argv: string[]): SearchOptions {
     allowPositionals: true,
   })
   const query = positionals.join(' ').trim()
-  if (!query) throw new Error('search needs a query: bd-board search <words> [--scope all|open|closed] [--json]')
+  if (!query) throw new Error('search needs a query: beadside search <words> [--scope all|open|closed] [--json]')
   const scope = (values.scope ?? 'all') as SearchScope
   if (!SCOPES.includes(scope)) throw new Error('--scope must be all, open or closed')
   const limit = values.limit === undefined ? DEFAULT_LIMIT : Number(values.limit)
@@ -151,7 +151,7 @@ async function runSearch(argv: string[]): Promise<void> {
   try {
     options = parseSearchOptions(argv)
   } catch (error) {
-    console.error(`bd-board: ${error instanceof Error ? error.message : String(error)}`)
+    console.error(`beadside: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(2)
   }
   try {
@@ -163,7 +163,7 @@ async function runSearch(argv: string[]): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     if (options.json) console.log(JSON.stringify({ error: message }))
-    console.error(`bd-board: search failed: ${message}`)
+    console.error(`beadside: search failed: ${message}`)
     process.exit(1)
   }
 }
@@ -201,22 +201,22 @@ export function openBrowser(url: string): void {
     args = [url]
   }
   const child = spawn(cmd, args, { stdio: 'ignore', detached: true })
-  child.on('error', () => console.error(`bd-board: could not run ${cmd}; open the url yourself`))
+  child.on('error', () => console.error(`beadside: could not run ${cmd}; open the url yourself`))
   child.unref()
 }
 
-/** parses the `--repo <path>` that `bd-board stop` and `bd-board status` take */
+/** parses the `--repo <path>` that `beadside stop` and `beadside status` take */
 export function parseRepoOnly(argv: string[]): string {
   const { values } = parseArgs({ args: argv, options: { repo: { type: 'string' } }, allowPositionals: false })
   return resolve(values.repo ?? process.cwd())
 }
 
 function failUsage(error: unknown): never {
-  console.error(`bd-board: ${error instanceof Error ? error.message : String(error)}`)
+  console.error(`beadside: ${error instanceof Error ? error.message : String(error)}`)
   process.exit(2)
 }
 
-/** `bd-board start [server flags]`: runs the board in the background, or reports the one already running */
+/** `beadside start [server flags]`: runs the board in the background, or reports the one already running */
 async function runStart(argv: string[]): Promise<void> {
   let options: Options
   try {
@@ -224,23 +224,23 @@ async function runStart(argv: string[]): Promise<void> {
   } catch (error) {
     failUsage(error)
   }
-  const running = readState(options.repo)
+  const running = findState(options.repo)
   if (running) {
-    console.log(`bd-board: already running for ${running.repo} at ${running.url} (pid ${running.pid})`)
+    console.log(`beadside: already running for ${running.repo} at ${running.url} (pid ${running.pid})`)
     if (options.open) openBrowser(running.url)
     return
   }
   try {
     const state = await startDetached(options.repo, argv)
-    console.log(`bd-board: started for ${state.repo} at ${state.url} (pid ${state.pid})`)
-    console.log('stop it with: bd-board stop')
+    console.log(`beadside: started for ${state.repo} at ${state.url} (pid ${state.pid})`)
+    console.log('stop it with: beadside stop')
   } catch (error) {
-    console.error(`bd-board: ${error instanceof Error ? error.message : String(error)}`)
+    console.error(`beadside: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(1)
   }
 }
 
-/** `bd-board stop`: ends the board running for this repo, background or foreground */
+/** `beadside stop`: ends the board running for this repo, background or foreground */
 async function runStop(argv: string[]): Promise<void> {
   let repo: string
   try {
@@ -248,20 +248,20 @@ async function runStop(argv: string[]): Promise<void> {
   } catch (error) {
     failUsage(error)
   }
-  const state = readState(repo)
+  const state = findState(repo)
   if (!state) {
-    console.log(`bd-board: no board running for ${repo}`)
+    console.log(`beadside: no board running for ${repo}`)
     return
   }
   if (await stopBoard(state)) {
-    console.log(`bd-board: stopped ${state.url} (pid ${state.pid})`)
+    console.log(`beadside: stopped ${state.url} (pid ${state.pid})`)
   } else {
-    console.error(`bd-board: pid ${state.pid} did not exit after SIGTERM`)
+    console.error(`beadside: pid ${state.pid} did not exit after SIGTERM`)
     process.exit(1)
   }
 }
 
-/** `bd-board status`: prints the running board's url, exits 1 when none runs */
+/** `beadside status`: prints the running board's url, exits 1 when none runs */
 function runStatus(argv: string[]): void {
   let repo: string
   try {
@@ -269,12 +269,12 @@ function runStatus(argv: string[]): void {
   } catch (error) {
     failUsage(error)
   }
-  const state = readState(repo)
+  const state = findState(repo)
   if (!state) {
-    console.log(`bd-board: no board running for ${repo}`)
+    console.log(`beadside: no board running for ${repo}`)
     process.exit(1)
   }
-  console.log(`bd-board: running for ${state.repo} at ${state.url} (pid ${state.pid})`)
+  console.log(`beadside: running for ${state.repo} at ${state.url} (pid ${state.pid})`)
 }
 
 async function main(): Promise<void> {
@@ -287,14 +287,14 @@ async function main(): Promise<void> {
   try {
     options = parseOptions(process.argv.slice(2))
   } catch (error) {
-    console.error(`bd-board: ${error instanceof Error ? error.message : String(error)}`)
+    console.error(`beadside: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(2)
   }
 
   try {
     if (!statSync(options.repo).isDirectory()) throw new Error('not a directory')
   } catch {
-    console.error(`bd-board: repo is not a directory: ${options.repo}`)
+    console.error(`beadside: repo is not a directory: ${options.repo}`)
     process.exit(2)
   }
 
@@ -302,7 +302,7 @@ async function main(): Promise<void> {
   try {
     config = loadConfig(options.repo, options.config)
   } catch (error) {
-    console.error(`bd-board: ${error instanceof Error ? error.message : String(error)}`)
+    console.error(`beadside: ${error instanceof Error ? error.message : String(error)}`)
     process.exit(2)
   }
 
@@ -318,7 +318,7 @@ async function main(): Promise<void> {
     if (derived) name = derived
   } catch (error) {
     const message = error instanceof BdError ? error.message : String(error)
-    console.error(`bd-board: could not read the backlog (${message})`)
+    console.error(`beadside: could not read the backlog (${message})`)
     process.exit(1)
   }
 
@@ -331,22 +331,22 @@ async function main(): Promise<void> {
     config,
     token: newToken(),
     uiDist,
-    live: { log: (message) => console.error(`bd-board: ${message}`) },
+    live: { log: (message) => console.error(`beadside: ${message}`) },
   })
   const app = board.app
 
   const port = options.port ?? (await firstFreePort(DEFAULT_PORT, PORT_TRIES))
   if (port === null) {
-    console.error(`bd-board: no free port between ${DEFAULT_PORT} and ${DEFAULT_PORT + PORT_TRIES - 1}; pass --port`)
+    console.error(`beadside: no free port between ${DEFAULT_PORT} and ${DEFAULT_PORT + PORT_TRIES - 1}; pass --port`)
     process.exit(1)
   }
 
   const server = serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     const url = `http://127.0.0.1:${info.port}/`
-    console.log(`bd-board: ${name} (${options.repo}), writing as ${human.id}`)
+    console.log(`beadside: ${name} (${options.repo}), writing as ${human.id}`)
     console.log(`open: ${url}`)
     if (agentsview) console.log(`agentsview: ${agentsview}`)
-    console.log('press Ctrl-C or run `bd-board stop` to stop')
+    console.log('press Ctrl-C or run `beadside stop` to stop')
     writeState({ pid: process.pid, port: info.port, url, repo: options.repo })
     if (options.open) {
       openBrowser(url)

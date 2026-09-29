@@ -95,7 +95,7 @@ const post = (path: string, body: unknown, token: string | null = TOKEN) =>
   })
 
 beforeAll(async () => {
-  repo = await mkdtemp(join(tmpdir(), 'bd-board-test-'))
+  repo = await mkdtemp(join(tmpdir(), 'beadside-test-'))
   await mkdir(join(repo, 'notes-folder'))
   await writeFile(
     join(repo, 'notes-folder', 'project_thing.md'),
@@ -169,7 +169,7 @@ describe('reads', () => {
 
 describe('static ui', () => {
   it('serves ui/dist when it exists and falls back to the shell', async () => {
-    const dist = await mkdtemp(join(tmpdir(), 'bd-board-dist-'))
+    const dist = await mkdtemp(join(tmpdir(), 'beadside-dist-'))
     await writeFile(join(dist, 'index.html'), '<!doctype html><title>board</title>')
     await writeFile(join(dist, 'app.js'), 'console.log(1)')
     const app = createApp({

@@ -1,4 +1,4 @@
-// background mode: `bd-board start` detaches a board and `bd-board stop` ends it,
+// background mode: `beadside start` detaches a board and `beadside stop` ends it,
 // both keyed by the repo path through a small state file per repo.
 import { spawn } from 'node:child_process'
 import { createHash } from 'node:crypto'
@@ -15,6 +15,11 @@ export interface BoardState {
 
 /** where the state and log files live; the runtime dir clears on reboot, so no board outlives its pid */
 export function stateDir(env: NodeJS.ProcessEnv = process.env): string {
+  return join(env['XDG_RUNTIME_DIR'] || tmpdir(), 'beadside')
+}
+
+/** the state dir from before the rename to beadside; a board started under the old name wrote here */
+export function legacyStateDir(env: NodeJS.ProcessEnv = process.env): string {
   return join(env['XDG_RUNTIME_DIR'] || tmpdir(), 'bd-board')
 }
 
@@ -44,6 +49,15 @@ export function readState(repo: string, dir = stateDir()): BoardState | null {
   }
   if (alive(state.pid)) return state
   rmSync(file, { force: true })
+  return null
+}
+
+/** the running board for this repo from any of `dirs`, so stop and status still find a board started as bd-board */
+export function findState(repo: string, dirs: string[] = [stateDir(), legacyStateDir()]): BoardState | null {
+  for (const dir of dirs) {
+    const state = readState(repo, dir)
+    if (state) return state
+  }
   return null
 }
 

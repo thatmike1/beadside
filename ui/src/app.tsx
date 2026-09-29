@@ -464,7 +464,7 @@ export function App() {
     const error = sessionQuery.error ?? issuesQuery.error
     return (
       <div className="loading">
-        no answer from the bd-board server on /api. {error instanceof Error ? error.message : ''}
+        no answer from the beadside server on /api. {error instanceof Error ? error.message : ''}
       </div>
     )
   }

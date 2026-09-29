@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         bd-board task tab titles
-// @namespace    https://github.com/thatmike1/bd-board
-// @version      1.0.0
+// @name         beadside task tab titles
+// @namespace    https://github.com/thatmike1/beadside
+// @version      1.1.0
 // @description  Show the selected task ID and title in the browser tab.
 // @match        http://127.0.0.1/*
 // @match        http://localhost/*
@@ -9,7 +9,7 @@
 // ==/UserScript==
 
 (() => {
-  if (document.title !== 'bd board') return
+  if (document.title !== 'beadside') return
 
   const root = document.getElementById('root')
   if (!root) return
@@ -17,7 +17,7 @@
   const updateTitle = () => {
     const id = root.querySelector('.read .rhead .copyid')?.textContent?.trim()
     const title = root.querySelector('.read .rbody h1')?.textContent?.trim()
-    const next = id && title ? `${id} · ${title}` : 'bd board'
+    const next = id && title ? `${id} · ${title}` : 'beadside'
     if (document.title !== next) document.title = next
   }
 

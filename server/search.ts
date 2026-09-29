@@ -1,5 +1,5 @@
 // full-text search over issue ids, titles, descriptions, notes and comments. the http route
-// and the `bd-board search` cli both call `searchIssues`, so a query returns the same hits
+// and the `beadside search` cli both call `searchIssues`, so a query returns the same hits
 // on the board and for an agent.
 import { classifyAuthor, type Author, type HumanIdentity } from './authors'
 import type { IssueWithComments, Status } from './bd'

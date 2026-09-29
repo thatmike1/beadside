@@ -1,4 +1,4 @@
-// the only place in bd-board that runs `bd`. every method maps to one fixed
+// the only place in beadside that runs `bd`. every method maps to one fixed
 // argument shape; nothing the client sends ever becomes a flag.
 import { execFile, spawn } from 'node:child_process'
 
@@ -292,7 +292,7 @@ export class BeadsClient {
     if (current.status === status && !(status === 'deferred' && until)) return current
 
     if (status === 'closed') {
-      await this.run(['close', id, '--reason', reason?.trim() || 'closed from bd-board'])
+      await this.run(['close', id, '--reason', reason?.trim() || 'closed from beadside'])
     } else if (status === 'deferred') {
       const args = ['defer', id]
       if (until) args.push('--until', until)

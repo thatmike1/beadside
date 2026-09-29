@@ -1,4 +1,4 @@
-// types, defaults, validation and loader for .bd-board.json
+// types, defaults, validation and loader for .beadside.json (.bd-board.json, the pre-rename name, still loads)
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import type { HumanIdentity } from './authors'
@@ -332,9 +332,21 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
   }
 }
 
-/** loads and resolves .bd-board.json from the repo or explicit path */
+/** config file names looked up in the repo root, in order; `.bd-board.json` is the name from before the rename */
+export const CONFIG_NAMES = ['.beadside.json', '.bd-board.json'] as const
+
+/** the config path to read in `repoPath`: the first name that exists, else the current name */
+export function configPath(repoPath: string): string {
+  for (const name of CONFIG_NAMES) {
+    const candidate = join(repoPath, name)
+    if (existsSync(candidate)) return candidate
+  }
+  return join(repoPath, CONFIG_NAMES[0])
+}
+
+/** loads and resolves .beadside.json (or the older .bd-board.json) from the repo, or an explicit path */
 export function loadConfig(repoPath: string, explicitPath?: string): ResolvedBoardConfig {
-  const filePath = explicitPath ? resolve(explicitPath) : join(repoPath, '.bd-board.json')
+  const filePath = explicitPath ? resolve(explicitPath) : configPath(repoPath)
   if (!existsSync(filePath)) {
     if (explicitPath) {
       throw new ConfigError(`config file not found: ${explicitPath}`, 'config')

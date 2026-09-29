@@ -168,7 +168,7 @@ describe('status transitions', () => {
   it('closes with a reason, defaulting the reason', async () => {
     const a = clientFor('open')
     await a.client.setStatus('repo-abc', 'closed')
-    expect(write(a.calls)).toEqual([['close', 'repo-abc', '--reason', 'closed from bd-board']])
+    expect(write(a.calls)).toEqual([['close', 'repo-abc', '--reason', 'closed from beadside']])
 
     const b = clientFor('open')
     await b.client.setStatus('repo-abc', 'closed', 'done')

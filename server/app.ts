@@ -230,7 +230,7 @@ export function createBoard(config: AppConfig): Board {
     return c.json({ issues, fetchedAt: new Date().toISOString() })
   })
 
-  // same ranking as `bd-board search`; reads comments from the export, not per issue
+  // same ranking as `beadside search`; reads comments from the export, not per issue
   app.get('/api/search', async (c) => {
     const query = c.req.query('q') ?? ''
     const scope = (c.req.query('scope') ?? 'all') as SearchScope

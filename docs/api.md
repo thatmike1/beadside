@@ -1,4 +1,4 @@
-# bd-board API contract
+# beadside API contract
 
 The server is the only thing that runs `bd`. The UI talks to it over HTTP on the same origin (in dev, Vite proxies `/api` to the server port). This file is the contract both sides build against.
 
@@ -128,7 +128,7 @@ interface SessionInfo {
 | GET | `/api/issues` | | `{ issues: Issue[], fetchedAt: string }` all statuses, the UI filters |
 | GET | `/api/issue-ids` | | `{ ids: string[] }` all statuses; readable cross-origin from the T3 Code renderer and loopback pages, which link short ids in chat |
 | GET | `/api/issues/:id` | | `IssueDetail` |
-| GET | `/api/search?q=<words>&scope=all\|open\|closed&limit=<1-500>` | | `SearchResult`, the same ranking `bd-board search` prints |
+| GET | `/api/search?q=<words>&scope=all\|open\|closed&limit=<1-500>` | | `SearchResult`, the same ranking `beadside search` prints |
 | GET | `/api/events` | | Server-sent events, same-origin only. `state` (`{ live: boolean }`) on connect and whenever live updates start or stop; `changed` (`{}`) when the ledger moved and lists should be refetched. See Live updates |
 | POST | `/api/issues/:id/comment` | `{ text: string, clear?: boolean }` | `IssueDetail` |
 | POST | `/api/issues/:id/status` | `{ status: Status, reason?: string, until?: string }` | `{ issue }` |
@@ -148,7 +148,7 @@ With the journal off, a bd without it, or a follower that keeps exiting, `state`
 ## Server behaviour per write
 
 - comment: `bd comments add <id> --author=<human id> -- <text>`, with `BEADS_ACTOR` pinned to the same id so an inherited agent actor never leaks in; if `config.note.addLabel` is configured, runs `bd label add <id> <addLabel>`; if `clear` is true, removes any `config.note.offerToClear` labels the issue carries.
-- status: `closed` runs `bd close <id> --reason <reason|"closed from bd-board">`; `deferred` runs `bd defer <id> [--until <until>]`; `open` from `closed` runs `bd reopen <id>`; `open` from `deferred` runs `bd undefer <id>`; anything else runs `bd update <id> --status <status>`.
+- status: `closed` runs `bd close <id> --reason <reason|"closed from beadside">`; `deferred` runs `bd defer <id> [--until <until>]`; `open` from `closed` runs `bd reopen <id>`; `open` from `deferred` runs `bd undefer <id>`; anything else runs `bd update <id> --status <status>`.
 - priority: `bd update <id> --priority <n>`.
 - labels: one `bd update <id> --add-label a --remove-label b` call. Labels: 1 to 128 chars, no whitespace.
 - create: `bd q <title> -l <label>...`; defaults to `config.capture.labels` when none given.
@@ -157,7 +157,7 @@ The server never accepts a raw argument list from the client. Every route maps t
 
 ## Comment authors
 
-bd stores whatever author a comment is written with. The board writes as its configured human (`"human": { "id": "human:mike", "name": "Mike" }` in `.bd-board.json`; without it, `human:<git user.name>`). Agents write as `agent:<provider>` by running bd with `BEADS_ACTOR` set, which bd uses as the default comment author. Reading an author:
+bd stores whatever author a comment is written with. The board writes as its configured human (`"human": { "id": "human:mike", "name": "Mike" }` in `.beadside.json`; without it, `human:<git user.name>`). Agents write as `agent:<provider>` by running bd with `BEADS_ACTOR` set, which bd uses as the default comment author. Reading an author:
 
 - the configured human id: human, `self`, shown as You
 - `agent:<provider>`, or a bare `Claude` / `Codex` / `Gemini`: agent, named after the provider; plain `agent` is Agent
@@ -178,15 +178,15 @@ One implementation, `server/search.ts`, serves both the http route and the cli. 
 For agents, no server or browser needed:
 
 ```bash
-bd-board search <words> [--scope all|open|closed] [--limit <n>] [--json] [--repo <path>] [--config <path>]
+beadside search <words> [--scope all|open|closed] [--limit <n>] [--json] [--repo <path>] [--config <path>]
 ```
 
 `--json` prints a `SearchResult`. Without it, one block per hit: id, status, priority and title, then where it matched and the excerpt. Exit code 0 with or without matches, 2 for bad arguments, 1 when bd fails.
 
 ## Config and launch
 
-`bd-board [--repo <path>] [--port <n>] [--config <path>] [--agentsview <url>|--no-agentsview] [--no-open]`
+`beadside [--repo <path>] [--port <n>] [--config <path>] [--agentsview <url>|--no-agentsview] [--no-open]`
 
 Defaults: repo = cwd, port = the first free port from 1338 up (an explicit `--port` fails if taken), agentsview = from config or off (`null`), opens the browser. Repo name = the `bd` issue prefix (derived from the first exported id, or the folder name when the export is empty).
 
-`bd-board start [same flags]` runs the board detached and returns once it listens; if one already runs for the repo it prints that url instead. `bd-board stop [--repo <path>]` sends SIGTERM to the board for the repo, whether it was started with `start` or in the foreground. `bd-board status [--repo <path>]` prints the url, exit 1 when none runs. A running board writes `{ pid, port, url, repo }` to `$XDG_RUNTIME_DIR/bd-board/<sha1(repo)[:12]>.json` (tmpdir when unset) and removes it on exit; a detached board logs to the matching `.log`.
+`beadside start [same flags]` runs the board detached and returns once it listens; if one already runs for the repo it prints that url instead. `beadside stop [--repo <path>]` sends SIGTERM to the board for the repo, whether it was started with `start` or in the foreground. `beadside status [--repo <path>]` prints the url, exit 1 when none runs. A running board writes `{ pid, port, url, repo }` to `$XDG_RUNTIME_DIR/beadside/<sha1(repo)[:12]>.json` (tmpdir when unset) and removes it on exit; a detached board logs to the matching `.log`.

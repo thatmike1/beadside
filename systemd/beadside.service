@@ -1,5 +1,5 @@
 [Unit]
-Description=bd-board over /home/thatmike1/git/ccChat-general, 127.0.0.1:1338
+Description=beadside over /home/thatmike1/git/ccChat-general, 127.0.0.1:1338
 Documentation=https://github.com/gastownhall/beads
 
 [Service]
@@ -7,7 +7,7 @@ Type=simple
 WorkingDirectory=/home/thatmike1/git/ccChat-general
 Environment=PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
 Environment=NODE_VERSION=default
-ExecStart=/home/thatmike1/.nvm/nvm-exec node /home/thatmike1/git/bd-board/bin/bd-board.mjs --repo /home/thatmike1/git/ccChat-general --port 1338 --no-open
+ExecStart=/home/thatmike1/.nvm/nvm-exec node /home/thatmike1/git/beadside/bin/beadside.mjs --repo /home/thatmike1/git/ccChat-general --port 1338 --no-open
 Restart=on-failure
 RestartSec=5
 

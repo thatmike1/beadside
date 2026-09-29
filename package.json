@@ -1,11 +1,12 @@
 {
-  "name": "bd-board",
+  "name": "beadside",
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "repository": "https://github.com/thatmike1/bd-board",
+  "repository": "https://github.com/thatmike1/beadside",
   "type": "module",
   "bin": {
+    "beadside": "./bin/beadside.mjs",
     "bd-board": "./bin/bd-board.mjs"
   },
   "scripts": {

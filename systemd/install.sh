@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build the ui and install bd-board as a systemd user service.
+# build the ui and install beadside as a systemd user service.
 # usage: install.sh <beads-repo-path> [port]
 set -euo pipefail
 
@@ -30,18 +30,24 @@ npm --prefix "$HERE" run build
 
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$UNIT_DIR"
-SERVICE_FILE="$UNIT_DIR/bd-board.service"
+SERVICE_FILE="$UNIT_DIR/beadside.service"
+
+# the unit was called bd-board.service before the rename; retire it so two boards do not fight over the port
+if [ -e "$UNIT_DIR/bd-board.service" ]; then
+  systemctl --user disable --now bd-board.service || true
+  rm -f "$UNIT_DIR/bd-board.service"
+fi
 
 cat > "$SERVICE_FILE" <<EOF
 [Unit]
-Description=bd-board over ${REPO}, 127.0.0.1:${PORT}
+Description=beadside over ${REPO}, 127.0.0.1:${PORT}
 Documentation=https://github.com/gastownhall/beads
 
 [Service]
 Type=simple
 WorkingDirectory=${REPO}
 Environment=PATH=${BD_DIR}:/usr/local/bin:/usr/bin:/bin
-ExecStart=${NODE_BIN} ${HERE}/bin/bd-board.mjs --repo ${REPO} --port ${PORT} --no-open
+ExecStart=${NODE_BIN} ${HERE}/bin/beadside.mjs --repo ${REPO} --port ${PORT} --no-open
 Restart=on-failure
 RestartSec=5
 
@@ -50,10 +56,10 @@ WantedBy=default.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable --now bd-board.service
+systemctl --user enable --now beadside.service
 
 echo
-systemctl --user --no-pager status bd-board.service | head -8 || true
+systemctl --user --no-pager status beadside.service | head -8 || true
 echo
 echo "board:     http://127.0.0.1:${PORT}"
-echo "uninstall: systemctl --user disable --now bd-board.service"
+echo "uninstall: systemctl --user disable --now beadside.service"

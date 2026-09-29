@@ -220,7 +220,7 @@ describe('loadConfig', () => {
 
   it('loads and parses file when present', async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'bd-cfg-test-'))
-    const cfgPath = join(tmpDir, '.bd-board.json')
+    const cfgPath = join(tmpDir, '.beadside.json')
     await writeFile(cfgPath, JSON.stringify({ lanes: [{ label: 'test-lane' }] }))
 
     const config = loadConfig(tmpDir)
@@ -230,9 +230,20 @@ describe('loadConfig', () => {
     await rm(tmpDir, { recursive: true, force: true })
   })
 
+  it('falls back to the pre-rename .bd-board.json, and prefers .beadside.json when both exist', async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), 'bd-cfg-test-'))
+    await writeFile(join(tmpDir, '.bd-board.json'), JSON.stringify({ lanes: [{ label: 'old-lane' }] }))
+    expect(loadConfig(tmpDir).lanes[0]?.label).toBe('old-lane')
+
+    await writeFile(join(tmpDir, '.beadside.json'), JSON.stringify({ lanes: [{ label: 'new-lane' }] }))
+    expect(loadConfig(tmpDir).lanes[0]?.label).toBe('new-lane')
+
+    await rm(tmpDir, { recursive: true, force: true })
+  })
+
   it('throws ConfigError on invalid json', async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'bd-cfg-test-'))
-    const cfgPath = join(tmpDir, '.bd-board.json')
+    const cfgPath = join(tmpDir, '.beadside.json')
     await writeFile(cfgPath, '{ invalid json')
 
     expect(() => loadConfig(tmpDir)).toThrowError(/invalid JSON in config file/)

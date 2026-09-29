@@ -170,7 +170,7 @@ export function IndexPane(props: IndexPaneProps) {
     <aside className="index">
       <div className="ihead">
         <div className="brand">
-          <b>bd&thinsp;board</b>
+          <b>beadside</b>
           <span>{repoName}</span>
           {fetchedAt ? <span className="stale">read {formatTime(fetchedAt)}</span> : null}
         </div>

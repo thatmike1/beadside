@@ -2,20 +2,32 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { clearState, readState, stateDir, stateStem, writeState } from './daemon'
+import { clearState, findState, legacyStateDir, readState, stateDir, stateStem, writeState } from './daemon'
 
 describe('board state files', () => {
   let dir: string
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'bd-board-state-'))
+    dir = mkdtempSync(join(tmpdir(), 'beadside-state-'))
   })
   afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
   const board = (pid: number) => ({ pid, port: 1338, url: 'http://127.0.0.1:1338/', repo: '/repo/a' })
 
   it('prefers the runtime dir and falls back to tmp', () => {
-    expect(stateDir({ XDG_RUNTIME_DIR: '/run/user/1' })).toBe('/run/user/1/bd-board')
-    expect(stateDir({})).toBe(join(tmpdir(), 'bd-board'))
+    expect(stateDir({ XDG_RUNTIME_DIR: '/run/user/1' })).toBe('/run/user/1/beadside')
+    expect(stateDir({})).toBe(join(tmpdir(), 'beadside'))
+    expect(legacyStateDir({ XDG_RUNTIME_DIR: '/run/user/1' })).toBe('/run/user/1/bd-board')
+  })
+
+  it('finds a board started under the old bd-board state dir', () => {
+    const legacy = mkdtempSync(join(tmpdir(), 'bd-board-state-'))
+    try {
+      writeState(board(process.pid), legacy)
+      expect(findState('/repo/a', [dir, legacy])).toEqual(board(process.pid))
+      expect(findState('/repo/b', [dir, legacy])).toBeNull()
+    } finally {
+      rmSync(legacy, { recursive: true, force: true })
+    }
   })
 
   it('keys each repo path to its own file', () => {
