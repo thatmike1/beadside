@@ -38,6 +38,8 @@ interface DetailPaneProps {
   onStatus: (status: Status) => void
   onLabels: (change: { add?: string[]; remove?: string[] }) => void
   onCopyId: (id: string) => void
+  /** phone only: back to the list */
+  onBack: () => void
 }
 
 /** the comment header label: You for the board's human, the agent or human name, or a legacy marker */
@@ -82,6 +84,7 @@ function CommentRow({ comment, human, flash }: { comment: Comment; human: string
 export function DetailPane(props: DetailPaneProps) {
   const { issue, detail, repoName, config, human, knownLabels, reveal } = props
   const bodyRef = useRef<HTMLDivElement>(null)
+  const readRef = useRef<HTMLElement>(null)
   const revealed = reveal && issue && reveal.id === issue.id ? reveal : null
   const detailReady = detail?.issue.id === issue?.id
 
@@ -101,6 +104,12 @@ export function DetailPane(props: DetailPaneProps) {
     const el = bodyRef.current.querySelector(selector)
     el?.scrollIntoView({ block: 'center' })
   }, [revealed, detailReady])
+
+  // on a phone the whole pane scrolls, so a new bead starts at its top
+  const openId = issue?.id
+  useEffect(() => {
+    if (readRef.current) readRef.current.scrollTop = 0
+  }, [openId])
 
   if (!issue) {
     return (
@@ -124,9 +133,12 @@ export function DetailPane(props: DetailPaneProps) {
   const flashComment = revealed?.field === 'comment' ? revealed.commentId : null
 
   return (
-    <main className="read" style={axisStyle(axis, config) as CSSProperties}>
+    <main className="read" ref={readRef} style={axisStyle(axis, config) as CSSProperties}>
       <div className="rhead">
         <div className="rline">
+          <button className="back" onClick={props.onBack} aria-label="back to the list">
+            &#8249; list
+          </button>
           <span className="dot" />
           <button
             className="mono copyid"

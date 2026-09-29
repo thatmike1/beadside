@@ -222,6 +222,11 @@ export function IndexPane(props: IndexPaneProps) {
             }
           }}
         />
+        {search.value ? (
+          <button className="sclear" onClick={search.onClear} aria-label="clear search">
+            &times;
+          </button>
+        ) : null}
         <span className="scopes" role="radiogroup" aria-label="search scope">
           {SCOPES.map(({ scope, label }) => (
             <button

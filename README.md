@@ -185,6 +185,17 @@ systemd/install.sh /path/to/your/beads-repo [port]
 
 This builds the UI, generates `~/.config/systemd/user/beadside.service`, reloads systemd, and starts the service.
 
+## on a phone
+
+Below 760px wide the board shows one pane at a time: the list, and a tapped bead sliding over it. The back gesture returns to the list with its scroll position kept. The server only listens on `127.0.0.1`, so reach it from a phone through something that proxies to it, for example Tailscale:
+
+```bash
+sudo tailscale serve --bg --https=1338 http://127.0.0.1:1338   # tailnet only
+sudo tailscale serve --https=1338 off                         # undo
+```
+
+Anyone who can open the page can write to the ledger, so keep the proxy private.
+
 ## develop
 
 ```bash

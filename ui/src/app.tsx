@@ -11,7 +11,8 @@ import { Toast } from './components/toast'
 import { useToast } from './use-toast'
 import { useFolds } from './use-folds'
 import { useLive } from './use-live'
-import { writeSelectionHash } from './navigation'
+import { isReadingState, openReading, writeSelectionHash } from './navigation'
+import { useNarrow } from './use-narrow'
 
 const EMPTY_CONFIG: BoardConfig = {
   agentsview: null,
@@ -51,6 +52,9 @@ export function App() {
   const noteRef = useRef<HTMLTextAreaElement>(null)
   const captureRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
+  const narrow = useNarrow()
+  // phone only: the open bead covers the list; its own history entry, so back returns to the list
+  const [reading, setReading] = useState(() => isReadingState(window.history.state))
 
   const sessionQuery = useQuery({
     queryKey: ['session'],
@@ -128,6 +132,31 @@ export function App() {
     },
     [selected, repoName],
   )
+
+  // on a phone a tap opens the bead over the list; on a wide screen it only moves the selection
+  const open = useCallback(
+    (id: string) => {
+      if (!narrow) {
+        select(id)
+        return
+      }
+      setSelected(id)
+      openReading(id, repoName)
+      setReading(true)
+    },
+    [narrow, select, repoName],
+  )
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => setReading(isReadingState(e.state))
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  const closeReading = useCallback(() => {
+    if (isReadingState(window.history.state)) window.history.back()
+    else setReading(false)
+  }, [])
 
   // a bead reached through the hash may sit only inside folded sections: open the first of them
   const reveal = useCallback(
@@ -363,7 +392,7 @@ export function App() {
 
   const pickHit = useCallback(
     (hit: SearchHit) => {
-      select(hit.id)
+      open(hit.id)
       setRevealTarget((prev) => ({
         id: hit.id,
         field: hit.field,
@@ -371,7 +400,7 @@ export function App() {
         seq: (prev?.seq ?? 0) + 1,
       }))
     },
-    [select],
+    [open],
   )
 
   const moveHit = useCallback(
@@ -475,13 +504,13 @@ export function App() {
 
   return (
     <>
-      <div className="app">
+      <div className={reading ? 'app reading' : 'app'}>
         <IndexPane
           board={board}
           repoName={repoName}
           config={config}
           selected={selected}
-          onSelect={select}
+          onSelect={open}
           onToggleSection={onToggleSection}
           captureRef={captureRef}
           captureValue={capture}
@@ -533,6 +562,7 @@ export function App() {
           onStatus={onStatus}
           onLabels={onLabels}
           onCopyId={onCopyId}
+          onBack={closeReading}
         />
       </div>
       <Toast toast={toaster.toast} onUndo={toaster.runUndo} onDismiss={toaster.dismiss} />

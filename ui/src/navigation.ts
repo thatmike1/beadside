@@ -12,3 +12,21 @@ export function writeSelectionHash(
   const method = userInitiated && previousId !== id ? 'pushState' : 'replaceState'
   window.history[method](null, '', `#${short}`)
 }
+
+/** history state of the phone's reading view; the list entry under it carries the same hash */
+const READING = 'reading'
+
+/** true when a history entry is the phone's reading view */
+export function isReadingState(state: unknown): boolean {
+  return typeof state === 'object' && state !== null && (state as { beadside?: unknown }).beadside === READING
+}
+
+/**
+ * phone: open a bead as its own history entry above the list, so the back gesture
+ * returns to the list with the same bead still selected
+ */
+export function openReading(id: string, repoName: string): void {
+  const url = `#${repoName ? shortId(id, repoName) : id}`
+  window.history.replaceState(null, '', url)
+  window.history.pushState({ beadside: READING }, '', url)
+}
