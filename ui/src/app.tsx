@@ -13,6 +13,7 @@ import { useFolds } from './use-folds'
 import { useLive } from './use-live'
 import { isReadingState, openReading, writeSelectionHash } from './navigation'
 import { useNarrow } from './use-narrow'
+import { useTheme } from './use-theme'
 
 const EMPTY_CONFIG: BoardConfig = {
   agentsview: null,
@@ -53,6 +54,7 @@ export function App() {
   const captureRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const narrow = useNarrow()
+  const { theme, toggle: toggleTheme } = useTheme()
   // phone only: the open bead covers the list; its own history entry, so back returns to the list
   const [reading, setReading] = useState(() => isReadingState(window.history.state))
 
@@ -426,7 +428,7 @@ export function App() {
     if (hits.length) searchRef.current?.blur()
   }, [searchResult, selected, pickHit])
 
-  // keyboard: movement, folds, the note box, copy, defer and close, search, quick capture
+  // keyboard: movement, folds, the note box, copy, defer and close, search, quick capture, theme
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
@@ -483,11 +485,14 @@ export function App() {
       } else if (e.key === '/') {
         e.preventDefault()
         captureRef.current?.focus()
+      } else if (e.key === 't') {
+        e.preventDefault()
+        toggleTheme()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [board, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch])
+  }, [board, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme])
 
   if (sessionQuery.isError || issuesQuery.isError) {
     const error = sessionQuery.error ?? issuesQuery.error
@@ -517,6 +522,8 @@ export function App() {
           onCaptureChange={setCapture}
           onCaptureSubmit={onCaptureSubmit}
           fetchedAt={issuesQuery.data?.fetchedAt}
+          theme={theme}
+          onToggleTheme={toggleTheme}
           search={{
             ref: searchRef,
             value: searchInput,

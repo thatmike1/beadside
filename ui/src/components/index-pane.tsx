@@ -6,6 +6,7 @@ import type { BoardConfig, Issue, SearchHit, SearchResult, SearchScope } from '.
 import type { Board, BoardRow } from '../model'
 import { axisOf, shortId, subsOf } from '../model'
 import { axisStyle, formatTime, laneColor, laneGlyph } from '../format'
+import type { Theme } from '../use-theme'
 import { SearchResults } from './search-results'
 
 interface RowProps {
@@ -92,6 +93,8 @@ interface IndexPaneProps {
   onCaptureSubmit: () => void
   fetchedAt: string | undefined
   search: SearchProps
+  theme: Theme
+  onToggleTheme: () => void
 }
 
 export interface SearchProps {
@@ -134,6 +137,8 @@ export function IndexPane(props: IndexPaneProps) {
     onCaptureSubmit,
     fetchedAt,
     search,
+    theme,
+    onToggleTheme,
   } = props
   const listRef = useRef<HTMLDivElement>(null)
   const searching = search.value.trim().length > 0
@@ -173,6 +178,14 @@ export function IndexPane(props: IndexPaneProps) {
           <b>beadside</b>
           <span>{repoName}</span>
           {fetchedAt ? <span className="stale">read {formatTime(fetchedAt)}</span> : null}
+          <button
+            className="theme"
+            onClick={onToggleTheme}
+            aria-label={`switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+            title="t"
+          >
+            {theme === 'dark' ? 'light' : 'dark'}
+          </button>
         </div>
         <div className="counts">
           <em>{counts.open}</em> open<span className="sep">/</span>
@@ -372,6 +385,9 @@ export function IndexPane(props: IndexPaneProps) {
         </span>
         <span>
           <kbd>/</kbd> capture
+        </span>
+        <span>
+          <kbd>t</kbd> theme
         </span>
       </div>
     </aside>

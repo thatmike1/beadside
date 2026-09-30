@@ -33,14 +33,23 @@ export function statusLabel(status: string): string {
   return status === 'in_progress' ? 'in progress' : status
 }
 
+/**
+ * a lane's configured colour as it reads in the current theme: untouched in light, lifted toward
+ * the ink in dark, where colours picked for paper would sink into the background
+ */
+function themed(color: string): string {
+  return `color-mix(in srgb, ${color} var(--lane-keep), var(--ink))`
+}
+
 /** the css custom properties that tint a row or the detail header for an axis */
 export function axisStyle(axis: string | null, config?: BoardConfig): Record<string, string> {
   if (axis && config) {
     const lane = config.lanes.find((l) => l.label === axis)
     if (lane) {
+      const color = themed(lane.color)
       return {
-        '--axis': lane.color,
-        '--fill-row': `color-mix(in srgb, ${lane.color} 14%, transparent)`,
+        '--axis': color,
+        '--fill-row': `color-mix(in srgb, ${color} 14%, transparent)`,
       }
     }
   }
@@ -56,11 +65,11 @@ export function laneGlyph(axis: string | null, config?: BoardConfig): string {
   return '\u00b7'
 }
 
-/** the color configured for a lane */
+/** the color configured for a lane, as a css value that follows the theme */
 export function laneColor(axis: string | null, config?: BoardConfig): string | undefined {
   if (axis && config) {
     const lane = config.lanes.find((l) => l.label === axis)
-    if (lane) return lane.color
+    if (lane) return themed(lane.color)
   }
   return undefined
 }

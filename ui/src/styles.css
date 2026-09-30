@@ -1,24 +1,73 @@
 /* beadside: split layout from design/directions/split.html, typography from ledger.html */
 
 :root {
+  color-scheme: light;
+  /* the ink every translucent rule, fill and shadow is mixed from */
+  --tint: 34 32 28;
   --bg-index: #e9e6df;
   --bg-read: #f8f7f4;
   --ink: #22201c;
   --ink-2: #5b574f;
   --ink-3: #8a857a;
-  --rule: rgba(34, 32, 28, 0.11);
-  --rule-soft: rgba(34, 32, 28, 0.06);
-  --fill: rgba(34, 32, 28, 0.055);
-  --fill-2: rgba(34, 32, 28, 0.09);
+  --prose: #302d28;
+  /* text on an --ink fill: the chosen scope, the primary button, the toast */
+  --on-ink: #f4f1ea;
+  --ink-hover: #3a362f;
+  --rule: rgb(var(--tint) / 0.11);
+  --rule-soft: rgb(var(--tint) / 0.06);
+  --fill: rgb(var(--tint) / 0.055);
+  --fill-2: rgb(var(--tint) / 0.09);
   --signal: #b4331a;
   --signal-soft: rgba(180, 51, 26, 0.1);
   --signal-ink: #8d2814;
   --none: #6f6a60;
   --none-fill: rgba(111, 106, 96, 0.12);
+  /* how much of a lane's configured colour survives; the rest is mixed toward --ink */
+  --lane-keep: 100%;
+  --notes-bg: rgba(71, 89, 138, 0.07);
+  --agent: #2f4f7a;
+  --wip: #2a5d55;
+  --wip-fill: rgba(47, 106, 96, 0.14);
+  --shadow: rgb(var(--tint) / 0.35);
+  --toast-action: #f0c9bd;
+  --toast-err: #ffb9a6;
+  --toast-hover: rgba(255, 255, 255, 0.12);
   --row: 30px;
   --gut-id: 52px;
   --pad-index: clamp(18px, 2.2vw, 30px);
   --pad-read: clamp(26px, 3vw, 54px);
+}
+
+/* ---------- dark: the same warm paper, lights off. set on <html> by the boot script in index.html ---------- */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --tint: 240 234 222;
+  --bg-index: #171614;
+  --bg-read: #1f1d1a;
+  --ink: #ebe7df;
+  --ink-2: #b5afa4;
+  --ink-3: #8c867a;
+  --prose: #d8d3c9;
+  --on-ink: #1c1a17;
+  --ink-hover: #fffdf8;
+  --rule: rgb(var(--tint) / 0.13);
+  --rule-soft: rgb(var(--tint) / 0.07);
+  --fill: rgb(var(--tint) / 0.07);
+  --fill-2: rgb(var(--tint) / 0.12);
+  --signal: #e9694b;
+  --signal-soft: rgba(233, 105, 75, 0.17);
+  --signal-ink: #f29078;
+  --none: #a39d91;
+  --none-fill: rgba(163, 157, 145, 0.16);
+  --lane-keep: 58%;
+  --notes-bg: rgba(122, 146, 210, 0.11);
+  --agent: #93b3e3;
+  --wip: #7fc6b7;
+  --wip-fill: rgba(90, 180, 160, 0.16);
+  --shadow: rgb(0 0 0 / 0.6);
+  --toast-action: #a5351d;
+  --toast-err: #a3260f;
+  --toast-hover: rgba(0, 0, 0, 0.1);
 }
 
 * {
@@ -107,6 +156,21 @@ textarea {
   color: var(--ink-3);
   font-size: 12px;
 }
+.brand .theme {
+  margin-left: auto;
+  align-self: center;
+  font-size: 12px;
+  padding: 2px 7px;
+  border-radius: 3px;
+  color: var(--ink-3);
+}
+.brand .stale + .theme {
+  margin-left: 0;
+}
+.brand .theme:hover {
+  background: var(--fill);
+  color: var(--ink-2);
+}
 .counts {
   margin-top: 6px;
   color: var(--ink-2);
@@ -137,7 +201,7 @@ textarea {
 .search input {
   flex: 1 1 auto;
   min-width: 0;
-  background: rgba(34, 32, 28, 0.04);
+  background: rgb(var(--tint) / 0.04);
   border: 0;
   border-radius: 4px;
   padding: 7px 11px;
@@ -145,7 +209,7 @@ textarea {
   font-size: 14px;
 }
 .search input:focus {
-  background: rgba(34, 32, 28, 0.07);
+  background: rgb(var(--tint) / 0.07);
   box-shadow: inset 0 0 0 1px var(--rule);
 }
 .search input::placeholder {
@@ -168,7 +232,7 @@ textarea {
 }
 .scopes button.on {
   background: var(--ink);
-  color: #f4f1ea;
+  color: var(--on-ink);
 }
 .results {
   padding: 0 0 8px;
@@ -190,7 +254,7 @@ textarea {
   color: var(--ink-2);
 }
 .hit:hover {
-  background: rgba(34, 32, 28, 0.035);
+  background: rgb(var(--tint) / 0.035);
 }
 .hit.sel {
   background: var(--fill-2);
@@ -248,7 +312,7 @@ textarea {
   overflow-wrap: anywhere;
 }
 .hit mark {
-  background: rgba(180, 51, 26, 0.14);
+  background: color-mix(in srgb, var(--signal) 14%, transparent);
   color: inherit;
   border-radius: 2px;
 }
@@ -260,7 +324,7 @@ textarea {
 }
 .capture input {
   width: 100%;
-  background: rgba(34, 32, 28, 0.04);
+  background: rgb(var(--tint) / 0.04);
   border: 0;
   border-radius: 4px;
   padding: 7px 11px;
@@ -268,7 +332,7 @@ textarea {
   font-size: 14px;
 }
 .capture input:focus {
-  background: rgba(34, 32, 28, 0.07);
+  background: rgb(var(--tint) / 0.07);
   box-shadow: inset 0 0 0 1px var(--rule);
 }
 .capture input::placeholder {
@@ -285,7 +349,7 @@ textarea {
   width: 9px;
 }
 .ilist::-webkit-scrollbar-thumb {
-  background: rgba(34, 32, 28, 0.16);
+  background: rgb(var(--tint) / 0.16);
   border-radius: 9px;
   border: 3px solid var(--bg-index);
 }
@@ -424,7 +488,7 @@ textarea {
   color: var(--ink-3);
 }
 .row:hover {
-  background: rgba(34, 32, 28, 0.035);
+  background: rgb(var(--tint) / 0.035);
 }
 .mark {
   color: var(--axis);
@@ -496,8 +560,8 @@ textarea {
   font-weight: 600;
 }
 .chip.wip {
-  background: rgba(47, 106, 96, 0.14);
-  color: #2a5d55;
+  background: var(--wip-fill);
+  color: var(--wip);
 }
 .waitdot {
   width: 5px;
@@ -520,7 +584,7 @@ textarea {
 .hint kbd {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  background: rgba(34, 32, 28, 0.07);
+  background: rgb(var(--tint) / 0.07);
   border-radius: 3px;
   padding: 1px 5px;
   color: var(--ink-2);
@@ -590,7 +654,7 @@ textarea {
 }
 .stepper button.on {
   background: var(--ink);
-  color: #f4f1ea;
+  color: var(--on-ink);
 }
 .verbs {
   display: flex;
@@ -644,7 +708,7 @@ textarea {
   width: 9px;
 }
 .rbody::-webkit-scrollbar-thumb {
-  background: rgba(34, 32, 28, 0.14);
+  background: rgb(var(--tint) / 0.14);
   border-radius: 9px;
   border: 3px solid var(--bg-read);
 }
@@ -685,17 +749,17 @@ h2.sub {
 .prose .md {
   margin: 12px 0;
   max-width: 78ch;
-  color: #302d28;
+  color: var(--prose);
 }
 .notes {
-  background: rgba(71, 89, 138, 0.07);
+  background: var(--notes-bg);
   border-radius: 5px;
   padding: 12px 18px;
   margin-top: 12px;
   max-width: 78ch;
 }
 .notes .md {
-  color: #33322f;
+  color: var(--prose);
 }
 .comment {
   padding: 11px 0;
@@ -715,14 +779,14 @@ h2.sub {
 }
 .comment .ctext {
   margin: 3px 0 0;
-  color: #302d28;
+  color: var(--prose);
   font-size: 14.5px;
 }
 .comment.mine .chead b {
   color: var(--signal-ink);
 }
 .comment.agent .chead b {
-  color: #2f4f7a;
+  color: var(--agent);
 }
 .comment.unknown .chead b {
   color: var(--ink-3);
@@ -742,7 +806,7 @@ h2.sub {
 @keyframes flash {
   0%,
   35% {
-    background-color: rgba(180, 51, 26, 0.1);
+    background-color: var(--signal-soft);
   }
   100% {
     background-color: transparent;
@@ -836,7 +900,7 @@ h2.sub {
   padding: 0.05em 0.3em;
 }
 .md pre {
-  background: rgba(34, 32, 28, 0.05);
+  background: rgb(var(--tint) / 0.05);
   border-radius: 5px;
   padding: 10px 13px;
   overflow-x: auto;
@@ -944,7 +1008,7 @@ h2.sub {
   flex: 0 0 auto;
   padding: 12px var(--pad-read) 18px;
   background: var(--bg-read);
-  box-shadow: 0 -14px 22px -18px rgba(34, 32, 28, 0.35);
+  box-shadow: 0 -14px 22px -18px var(--shadow);
 }
 .cwrap {
   max-width: 1180px;
@@ -953,7 +1017,7 @@ h2.sub {
   width: 100%;
   min-height: 70px;
   resize: none;
-  background: rgba(34, 32, 28, 0.035);
+  background: rgb(var(--tint) / 0.035);
   border: 0;
   border-radius: 5px;
   padding: 11px 14px;
@@ -961,8 +1025,8 @@ h2.sub {
   line-height: 1.55;
 }
 .composer textarea:focus {
-  background: rgba(34, 32, 28, 0.055);
-  box-shadow: inset 0 0 0 1px rgba(34, 32, 28, 0.14);
+  background: rgb(var(--tint) / 0.055);
+  box-shadow: inset 0 0 0 1px rgb(var(--tint) / 0.14);
 }
 .composer textarea::placeholder {
   color: var(--ink-3);
@@ -1013,10 +1077,10 @@ h2.sub {
 }
 .btn.primary {
   background: var(--ink);
-  color: #f4f1ea;
+  color: var(--on-ink);
 }
 .btn.primary:hover {
-  background: #3a362f;
+  background: var(--ink-hover);
 }
 .btn[disabled] {
   opacity: 0.45;
@@ -1030,27 +1094,27 @@ h2.sub {
   bottom: 26px;
   transform: translateX(-50%);
   background: var(--ink);
-  color: #f4f1ea;
+  color: var(--on-ink);
   font-size: 13.5px;
   padding: 8px 10px 8px 16px;
   border-radius: 5px;
   display: flex;
   align-items: center;
   gap: 14px;
-  box-shadow: 0 10px 30px -12px rgba(34, 32, 28, 0.6);
+  box-shadow: 0 10px 30px -12px var(--shadow);
 }
 .toast button {
-  color: #f0c9bd;
+  color: var(--toast-action);
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 3px;
 }
 .toast button:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
+  background: var(--toast-hover);
+  color: var(--on-ink);
 }
 .toast .err {
-  color: #ffb9a6;
+  color: var(--toast-err);
 }
 
 .loading {
@@ -1112,7 +1176,7 @@ h2.sub {
     transition:
       transform 240ms cubic-bezier(0.2, 0.7, 0.2, 1),
       visibility 0s linear 240ms;
-    box-shadow: -10px 0 24px -18px rgba(34, 32, 28, 0.5);
+    box-shadow: -10px 0 24px -18px var(--shadow);
   }
   .app.reading .read {
     transform: none;

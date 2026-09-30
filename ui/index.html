@@ -4,6 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#e9e6df">
+<script>
+// before first paint, so a dark board never flashes light. keep in step with ui/src/use-theme.ts
+(function () {
+  var theme = null
+  try { theme = localStorage.getItem('beadside:theme') } catch (e) {}
+  if (theme !== 'light' && theme !== 'dark') {
+    theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+  }
+  document.documentElement.dataset.theme = theme
+})()
+</script>
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
 <link rel="icon" href="/favicon.ico">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
