@@ -26,6 +26,8 @@ export interface LiveFeedOptions {
   healthyAfterMs?: number
 }
 
+// how much follower stderr to keep for the patterns below and the give-up message
+const STDERR_KEEP = 4_096
 // bd keeps following with this note on stderr when the journal is off
 const DISABLED = /events journal is disabled/i
 // a checkpoint below the retained floor; the view is rebuilt from a full export anyway
@@ -86,7 +88,8 @@ export class LiveFeed {
       },
       stderr: (text) => {
         if (handle !== this.handle) return
-        this.stderr += text
+        // one follower lives through many reads; keep only the tail the patterns need
+        this.stderr = (this.stderr + text).slice(-STDERR_KEEP)
         if (DISABLED.test(this.stderr)) this.giveUp('the events journal is off; enable it with `bd config set events-journal true`')
         else if (UNSUPPORTED.test(this.stderr)) this.giveUp('this bd has no events journal (needs 1.3.0 or newer)')
       },

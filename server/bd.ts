@@ -151,6 +151,7 @@ export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS): Follower {
     let child: ReturnType<typeof spawn> | null = null
     let timer: ReturnType<typeof setTimeout> | null = null
     const emit = (line: string) => {
+      if (stopped) return
       try {
         const record = JSON.parse(line) as { seq?: unknown }
         if (typeof record.seq === 'number' && record.seq > seq) seq = record.seq
@@ -191,7 +192,9 @@ export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS): Follower {
         for (const line of lines) if (line.trim()) emit(line)
       })
       run.stderr!.setEncoding('utf8')
-      run.stderr!.on('data', (chunk: string) => handlers.stderr(chunk))
+      run.stderr!.on('data', (chunk: string) => {
+        if (!stopped) handlers.stderr(chunk)
+      })
       // ENOENT and friends arrive here instead of as an exit
       run.on('error', () => end(127))
       run.on('close', (code) => end(code))

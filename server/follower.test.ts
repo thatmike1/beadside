@@ -69,12 +69,12 @@ describe('nodeFollower', () => {
     expect(calls()).toHaveLength(1)
   })
 
-  it('stop() ends the loop', async () => {
-    const handle = nodeFollower(dir, 20)(0, { line: () => {}, stderr: () => {}, exit: () => {} })
-    await until(() => calls().length >= 1)
+  it('stop() between reads cancels the next one', async () => {
+    const lines: string[] = []
+    const handle = nodeFollower(dir, 200)(0, { line: (l) => lines.push(l), stderr: () => {}, exit: () => {} })
+    await until(() => lines.length === 2)
     handle.stop()
-    const seen = calls().length
-    await new Promise((r) => setTimeout(r, 100))
-    expect(calls().length).toBeLessThanOrEqual(seen + 1)
+    await new Promise((r) => setTimeout(r, 400))
+    expect(calls()).toHaveLength(1)
   })
 })
