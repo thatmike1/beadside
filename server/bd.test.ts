@@ -140,25 +140,26 @@ describe('comment', () => {
     await client.comment('repo-abc', '-leading dash note', { addLabel: 'from-human' })
     expect(calls).toEqual([
       ['comments', 'add', 'repo-abc', '--', '-leading dash note'],
-      ['label', 'add', 'repo-abc', '--', 'from-human'],
-      ['show', 'repo-abc', '--json'],
+      ['update', 'repo-abc', '--add-label=from-human'],
     ])
   })
 
-  it('also removes clearLabels that the issue carries', async () => {
+  it('adds and clears labels in one update, without reading the issue first', async () => {
     const { client, calls } = clientFor('open', { labels: ['needs-human', 'other'] }, 'human:mike')
-    const issue: Issue = await client.comment('repo-abc', 'verdict', {
+    await client.comment('repo-abc', 'verdict', {
       addLabel: 'from-human',
       clearLabels: ['needs-human', 'non-existent'],
     })
     expect(calls).toEqual([
       ['comments', 'add', 'repo-abc', '--author=human:mike', '--', 'verdict'],
-      ['label', 'add', 'repo-abc', '--', 'from-human'],
-      ['show', 'repo-abc', '--json'],
-      ['label', 'remove', 'repo-abc', '--', 'needs-human'],
-      ['show', 'repo-abc', '--json'],
+      ['update', 'repo-abc', '--add-label=from-human', '--remove-label=needs-human', '--remove-label=non-existent'],
     ])
-    expect(issue.id).toBe('repo-abc')
+  })
+
+  it('runs only the comment when there is no label to change', async () => {
+    const { client, calls } = clientFor()
+    await client.comment('repo-abc', 'plain')
+    expect(calls).toEqual([['comments', 'add', 'repo-abc', '--', 'plain']])
   })
 })
 

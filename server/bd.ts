@@ -296,32 +296,28 @@ export class BeadsClient {
   }
 
   /**
-   * adds a note comment and updates labels: `bd comments add --author <actor>`, then optionally
-   * `bd label add`, and removes each specified clearLabel the issue carries.
+   * adds a note comment, then one `bd update` that adds addLabel and removes clearLabels.
+   * removing a label the issue lacks is a no-op in bd, so nothing is read first; the caller
+   * reads the issue once afterwards. two bd runs, each about half a second.
    */
   async comment(
     id: string,
     text: string,
     options: { addLabel?: string | null; clearLabels?: string[] } = {},
-  ): Promise<Issue> {
+  ): Promise<void> {
     assertId(id)
     const body = assertText(text, 'comment text')
     // `--` stops bd's flag parsing, so a note may start with a dash; an explicit author wins
     // over whatever BEADS_ACTOR the process inherited
     const author = this.actor ? [`--author=${this.actor}`] : []
     await this.run(['comments', 'add', id, ...author, '--', body])
-    if (options.addLabel) {
-      await this.run(['label', 'add', id, '--', options.addLabel])
-    }
-    if (options.clearLabels && options.clearLabels.length > 0) {
-      const current = await this.issue(id)
-      for (const label of options.clearLabels) {
-        if (current.labels.includes(label)) {
-          await this.run(['label', 'remove', id, '--', label])
-        }
-      }
-    }
-    return this.issue(id)
+    const add = options.addLabel ? [assertLabel(options.addLabel)] : []
+    const remove = [...new Set(options.clearLabels ?? [])].map(assertLabel).filter((label) => !add.includes(label))
+    if (!add.length && !remove.length) return
+    const args = ['update', id]
+    for (const label of add) args.push(`--add-label=${label}`)
+    for (const label of remove) args.push(`--remove-label=${label}`)
+    await this.run(args)
   }
 
   /** moves the issue with the semantic bd command for that transition */

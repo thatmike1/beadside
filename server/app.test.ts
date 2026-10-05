@@ -244,11 +244,12 @@ describe('writes', () => {
     expect(response.status).toBe(200)
     const body = await json<DetailBody>(response)
     expect(body.comments).toHaveLength(1)
-    expect(calls.slice(0, 4)).toEqual([
+    // the write is two bd runs, then one read of the issue and its comments
+    expect(calls).toEqual([
       ['comments', 'add', 'repo-abc', '--author=human:tester', '--', 'do it'],
-      ['label', 'add', 'repo-abc', '--', 'from-human'],
+      ['update', 'repo-abc', '--add-label=from-human', '--remove-label=needs-human'],
       ['show', 'repo-abc', '--json'],
-      ['label', 'remove', 'repo-abc', '--', 'needs-human'],
+      ['comments', 'repo-abc', '--json'],
     ])
   })
 

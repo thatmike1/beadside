@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from './api'
-import type { BoardConfig, Issue, IssueDetail, IssueList, SearchHit, SearchScope, Status } from './api'
+import type { BoardConfig, Comment, Issue, IssueDetail, IssueList, SearchHit, SearchScope, Status } from './api'
 import { buildBoard, sectionsHolding, shortId, step } from './model'
 import { IndexPane } from './components/index-pane'
 import { DetailPane, type RevealTarget } from './components/detail-pane'
@@ -313,33 +313,58 @@ export function App() {
   )
 
   const onSend = useCallback(() => {
-    if (!current) return
+    if (!current || !session) return
     const id = current.id
     const text = (drafts[id] ?? '').trim()
     if (!text || sending) return
     const presentClears = config.note.offerToClear.filter((l) => current.labels.includes(l))
     const clear = presentClears.length > 0 && (clears[id] ?? true)
+    // the note and its label changes show at once; the server's detail replaces them when
+    // bd is done, which takes seconds and up to ~20 s when a `bd sync` holds the lock
+    const before = current
+    const labels = current.labels.filter((l) => !(clear && presentClears.includes(l)))
+    const addLabel = config.note.addLabel
+    if (addLabel && !labels.includes(addLabel)) labels.push(addLabel)
+    const pending: Comment = {
+      id: `pending-${Date.now()}`,
+      issue_id: id,
+      author: session.me,
+      text,
+      created_at: new Date().toISOString(),
+      by: { kind: 'human', name: session.human.name, self: true },
+    }
+    void qc.cancelQueries({ queryKey: ['issue', id] })
+    qc.setQueryData<IssueDetail>(['issue', id], (prev) =>
+      prev ? { ...prev, comments: [...prev.comments, pending] } : prev,
+    )
+    applyIssue({ ...current, labels, comment_count: current.comment_count + 1 })
+    setDrafts((prev) => ({ ...prev, [id]: '' }))
     setSending(true)
     void api
       .postComment(id, text, clear)
       .then((detail) => {
         qc.setQueryData<IssueDetail>(['issue', id], detail)
         applyIssue(detail.issue)
-        setDrafts((prev) => ({ ...prev, [id]: '' }))
         const short = shortId(id, repoName)
         let msg = `note on ${short}`
-        if (config.note.addLabel) msg += `, ${config.note.addLabel} set`
+        if (addLabel) msg += `, ${addLabel} set`
         if (clear) msg += `, ${presentClears.join(', ')} cleared`
         toaster.show(msg)
       })
       .catch((error: unknown) => {
+        qc.setQueryData<IssueDetail>(['issue', id], (prev) =>
+          prev ? { ...prev, comments: prev.comments.filter((c) => c.id !== pending.id) } : prev,
+        )
+        applyIssue(before)
+        // give the text back unless a new draft was started meanwhile
+        setDrafts((prev) => (prev[id] ? prev : { ...prev, [id]: text }))
         toaster.fail(error instanceof Error ? error.message : 'comment failed')
       })
       .finally(() => {
         setSending(false)
         refresh(id)
       })
-  }, [current, drafts, clears, sending, qc, applyIssue, toaster, repoName, refresh, config])
+  }, [current, session, drafts, clears, sending, qc, applyIssue, toaster, repoName, refresh, config])
 
   const onCaptureSubmit = useCallback(() => {
     const title = capture.trim()
