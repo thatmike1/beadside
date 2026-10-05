@@ -139,7 +139,7 @@ interface SessionInfo {
 
 ## Live updates
 
-With the beads events journal on (`bd config set events-journal true`, bd 1.3.0 or newer), the server keeps one `bd events tail --follow` running. A burst of journal records triggers one `bd export`, and `/api/events` sends `changed`. Records are only a trigger: they carry no comment or dependency counts, so the export stays the one source of truth. While live, `/api/issues`, `/api/search` and `/api/issue-ids` read that cached export instead of exporting per request.
+With the beads events journal on (`bd config set events-journal true`, bd 1.3.0 or newer), the server reads the journal with a one-shot `bd events tail --since <n>` every 3 seconds. Not `--follow`: that child holds the embedded Dolt lock almost without a break and starves `bd sync`. A burst of journal records triggers one `bd export`, and `/api/events` sends `changed`. Records are only a trigger: they carry no comment or dependency counts, so the export stays the one source of truth. While live, `/api/issues`, `/api/search` and `/api/issue-ids` read that cached export instead of exporting per request.
 
 The journal does not see rows that arrive by `bd dolt pull` or `bd sync`, so a live server also re-exports every 2 minutes and sends `changed` only when the export differs from the last one it announced.
 

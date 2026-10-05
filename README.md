@@ -173,7 +173,7 @@ With beads 1.3.0 or newer, turn on the events journal in the beads repo and rest
 bd config set events-journal true
 ```
 
-The board then follows the journal and refreshes open tabs within about a second of any `bd` write, from an agent or a terminal. Changes pulled in by `bd dolt pull` or `bd sync` never reach the journal, so they show up within 2 minutes instead. Without the journal the board polls every 20 seconds, and its log says why.
+The board then follows the journal and refreshes open tabs within a few seconds of any `bd` write, from an agent or a terminal. Changes pulled in by `bd dolt pull` or `bd sync` never reach the journal, so they show up within 2 minutes instead. Without the journal the board polls every 20 seconds, and its log says why.
 
 ## run as a service
 

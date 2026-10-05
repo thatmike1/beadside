@@ -1,4 +1,4 @@
-// keeps one `bd events tail --follow` running and turns its records into "the ledger
+// keeps one journal follower running (see nodeFollower) and turns its records into "the ledger
 // changed" pings. records are a trigger only: the board re-reads everything with
 // `bd export`, because a journal record carries no comment or dependency counts.
 import type { FollowHandle, FollowHandlers } from './bd'

@@ -117,7 +117,7 @@ export function nodeRunner(repo: string, actor?: string): Runner {
     })
 }
 
-/** what a running `bd events tail --follow` reports back, one callback per kind */
+/** what a running journal follower reports back, one callback per kind */
 export interface FollowHandlers {
   /** one complete stdout line, a JSON record when the journal is on */
   line(text: string): void
@@ -134,35 +134,77 @@ export interface FollowHandle {
 /** starts one journal follower from a checkpoint; injected in tests so no real `bd` is spawned */
 export type Follower = (since: number, handlers: FollowHandlers) => FollowHandle
 
-/** spawns `bd events tail --since <n> --follow` in the repo and splits its stdout into lines */
-export function nodeFollower(repo: string): Follower {
+/** quiet time between two reads of the journal */
+export const FOLLOW_POLL_MS = 3_000
+
+/**
+ * follows the journal with one `bd events tail --since <n>` at a time, each started
+ * `pollMs` after the last one exits, and splits stdout into lines. not `--follow`: that
+ * child holds the embedded dolt lock almost without a break, and `bd sync` (or any other
+ * bd) waits on it until its timeout. a read takes about 0.2 s and waits its turn behind a
+ * sync. a read that exits nonzero ends the follow, as a `--follow` child dying would.
+ */
+export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS): Follower {
   return (since, handlers) => {
-    const child = spawn('bd', ['events', 'tail', '--since', String(since), '--follow'], {
-      cwd: repo,
-      env: { ...process.env, NO_COLOR: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-    let pending = ''
-    let ended = false
-    const end = (code: number | null) => {
-      if (ended) return
-      ended = true
-      if (pending.trim()) handlers.line(pending)
-      handlers.exit(code)
+    let seq = since
+    let stopped = false
+    let child: ReturnType<typeof spawn> | null = null
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const emit = (line: string) => {
+      try {
+        const record = JSON.parse(line) as { seq?: unknown }
+        if (typeof record.seq === 'number' && record.seq > seq) seq = record.seq
+      } catch {
+        // not a record; the feed ignores it too
+      }
+      handlers.line(line)
     }
-    child.stdout.setEncoding('utf8')
-    child.stdout.on('data', (chunk: string) => {
-      pending += chunk
-      const lines = pending.split('\n')
-      pending = lines.pop() ?? ''
-      for (const line of lines) if (line.trim()) handlers.line(line)
-    })
-    child.stderr.setEncoding('utf8')
-    child.stderr.on('data', (chunk: string) => handlers.stderr(chunk))
-    // ENOENT and friends arrive here instead of as an exit
-    child.on('error', () => end(127))
-    child.on('close', (code) => end(code))
-    return { stop: () => void child.kill('SIGTERM') }
+    const read = () => {
+      timer = null
+      if (stopped) return
+      const run = spawn('bd', ['events', 'tail', '--since', String(seq)], {
+        cwd: repo,
+        env: { ...process.env, NO_COLOR: '1' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+      child = run
+      let pending = ''
+      let ended = false
+      const end = (code: number | null) => {
+        if (ended) return
+        ended = true
+        child = null
+        if (pending.trim()) emit(pending)
+        if (stopped) return
+        if (code !== 0) {
+          stopped = true
+          handlers.exit(code)
+          return
+        }
+        timer = setTimeout(read, pollMs)
+      }
+      run.stdout!.setEncoding('utf8')
+      run.stdout!.on('data', (chunk: string) => {
+        pending += chunk
+        const lines = pending.split('\n')
+        pending = lines.pop() ?? ''
+        for (const line of lines) if (line.trim()) emit(line)
+      })
+      run.stderr!.setEncoding('utf8')
+      run.stderr!.on('data', (chunk: string) => handlers.stderr(chunk))
+      // ENOENT and friends arrive here instead of as an exit
+      run.on('error', () => end(127))
+      run.on('close', (code) => end(code))
+    }
+    read()
+    return {
+      stop: () => {
+        stopped = true
+        if (timer) clearTimeout(timer)
+        timer = null
+        child?.kill('SIGTERM')
+      },
+    }
   }
 }
 
@@ -189,7 +231,7 @@ export class BeadsClient {
     this.follower = options.follower ?? nodeFollower(repo)
   }
 
-  /** follows the events journal from a checkpoint; the only long-running bd the board starts */
+  /** follows the events journal from a checkpoint; the only bd the board runs on a timer */
   follow(since: number, handlers: FollowHandlers): FollowHandle {
     if (!Number.isInteger(since) || since < 0) throw new BdError('since must be a non-negative integer')
     return this.follower(since, handlers)
