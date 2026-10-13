@@ -613,6 +613,10 @@ textarea {
 /* ---------- inbox and stale rows: the board row, then why it is here and its verdicts ---------- */
 .irow {
   padding-bottom: 5px;
+  cursor: pointer;
+}
+.iact input {
+  cursor: auto;
 }
 .irow.sel {
   background: var(--fill-row);

@@ -54,7 +54,15 @@ function ActionRow(props: {
   const selected = issue.id === list.selected
   const className = ['irow', selected ? 'sel' : '', read ? 'seen' : ''].filter(Boolean).join(' ')
   return (
-    <div className={className} style={axisStyle(axis, list.config) as CSSProperties}>
+    // the whole item opens the bead; the title row is its own button, the verdicts keep their clicks
+    <div
+      className={className}
+      style={axisStyle(axis, list.config) as CSSProperties}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest('button, input')) return
+        list.onSelect(issue.id)
+      }}
+    >
       <Row
         row={{ issue, child: false, waiting: false }}
         axis={axis}
