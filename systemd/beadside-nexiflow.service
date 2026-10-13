@@ -1,0 +1,17 @@
+[Unit]
+Description=beadside over /home/thatmike1/git/nexiflow, 127.0.0.1:1358
+Documentation=https://github.com/gastownhall/beads
+
+[Service]
+Type=simple
+WorkingDirectory=/home/thatmike1/git/nexiflow
+Environment=PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_VERSION=default
+# keep the optional tracked jsonl export out of this service's writes
+Environment=BD_EXPORT_AUTO=false
+ExecStart=/home/thatmike1/.nvm/nvm-exec node /home/thatmike1/git/beadside/bin/beadside.mjs --repo /home/thatmike1/git/nexiflow --port 1358 --no-open
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

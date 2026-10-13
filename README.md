@@ -209,6 +209,48 @@ systemd/install.sh /path/to/your/beads-repo [port]
 
 This builds the UI, generates `~/.config/systemd/user/beadside.service`, reloads systemd, and starts the service.
 
+### one service per tracker
+
+Each tracker needs its own unit name and an explicit free port. The installer above
+manages only `beadside.service`; running it again replaces that board. For additional
+trackers, copy `systemd/beadside.service` to a differently named unit, change both
+repository paths and the port, and adjust the launcher and PATH for your machine.
+The checked-in desktop units use `nvm-exec` with `NODE_VERSION=default` so Node
+upgrades do not break them.
+
+The supplied desktop units keep ccChat-general on `beadside.service` at port 1338
+and NexiFlow on `beadside-nexiflow.service` at port 1358. After building, link the
+second unit without replacing the first:
+
+```bash
+ln -s "$PWD/systemd/beadside-nexiflow.service" ~/.config/systemd/user/beadside-nexiflow.service
+systemctl --user daemon-reload
+systemctl --user enable --now beadside-nexiflow.service
+```
+
+For a tracker shared with other machines, the board's polling refreshes the local
+database but does not pull remote changes. `beads-sync-nexiflow.timer` runs
+`bd sync --no-adopt` 45 seconds after login and every five minutes. It uses the
+existing Dolt remote, halts on conflicts, and syncs `refs/dolt/data` without
+committing or pushing the repository's code branch. Its service pins an SSH key
+because the user manager has no SSH agent; adjust the key path and repository
+before installing it on another machine.
+Both NexiFlow services set `BD_EXPORT_AUTO=false` for their child commands, so
+they leave the optional tracked JSONL export alone without changing repo config.
+
+```bash
+ln -s "$PWD/systemd/beads-sync-nexiflow.service" ~/.config/systemd/user/beads-sync-nexiflow.service
+ln -s "$PWD/systemd/beads-sync-nexiflow.timer" ~/.config/systemd/user/beads-sync-nexiflow.timer
+systemctl --user daemon-reload
+systemctl --user enable --now beads-sync-nexiflow.timer
+systemctl --user start beads-sync-nexiflow.service
+journalctl --user -u beads-sync-nexiflow.service -n 20 --no-pager
+```
+
+Repeat with a unique board unit, sync service/timer pair, and port for each tracker.
+Stop one board with `systemctl --user disable --now beadside-nexiflow.service`;
+stop its automatic sync separately with `systemctl --user disable --now beads-sync-nexiflow.timer`.
+
 ## on a phone
 
 Below 760px wide the board shows one pane at a time: the list, and a tapped bead sliding over it. The back gesture returns to the list with its scroll position kept. The server only listens on `127.0.0.1`, so reach it from a phone through something that proxies to it, for example Tailscale:

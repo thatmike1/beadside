@@ -1,0 +1,9 @@
+[Unit]
+Description=bd sync for NexiFlow, shortly after login and every 5 minutes
+
+[Timer]
+OnStartupSec=45s
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target

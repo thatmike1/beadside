@@ -1,0 +1,13 @@
+[Unit]
+Description=bd sync for NexiFlow (pull, conflict check, push)
+After=network-online.target
+
+# the key is pinned because a user service has no ssh agent
+[Service]
+Type=oneshot
+WorkingDirectory=%h/git/nexiflow
+Environment=PATH=/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
+Environment=BD_EXPORT_AUTO=false
+Environment="GIT_SSH_COMMAND=ssh -o IdentitiesOnly=yes -o BatchMode=yes -i %h/.ssh/id_rsa"
+ExecStart=/home/linuxbrew/.linuxbrew/bin/bd sync --no-adopt
+TimeoutStartSec=180
