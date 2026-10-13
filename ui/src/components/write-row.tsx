@@ -23,6 +23,7 @@ export function WriteRow({ issue, knownLabels, onPriority, onStatus, onLabels }:
   const [draft, setDraft] = useState('')
   const closed = issue.status === 'closed'
   const deferred = issue.status === 'deferred'
+  const pinned = issue.status === 'pinned'
   const suggestions = knownLabels.filter((l) => !issue.labels.includes(l))
 
   const add = () => {
@@ -49,7 +50,9 @@ export function WriteRow({ issue, knownLabels, onPriority, onStatus, onLabels }:
       </div>
 
       <div className="verbs">
-        {!deferred && !closed ? <button onClick={() => onStatus('deferred')}>defer</button> : null}
+        {!deferred && !closed && !pinned ? <button onClick={() => onStatus('pinned')}>pin</button> : null}
+        {pinned ? <button onClick={() => onStatus('open')}>unpin</button> : null}
+        {!deferred && !closed && !pinned ? <button onClick={() => onStatus('deferred')}>defer</button> : null}
         {!closed ? <button onClick={() => onStatus('closed')}>close</button> : null}
         {closed || deferred ? <button onClick={() => onStatus('open')}>reopen</button> : null}
       </div>

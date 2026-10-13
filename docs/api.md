@@ -12,7 +12,7 @@ The server is the only thing that runs `bd`. The UI talks to it over HTTP on the
 ## Types
 
 ```ts
-type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'closed'
+type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'pinned' | 'closed'
 
 interface Issue {            // one record of `bd export` (JSONL, `_type === 'issue'`), `_type` dropped
   id: string

@@ -275,7 +275,12 @@ export function App() {
       if (before === status) return
       const id = current.id
       const short = shortId(id, repoName)
-      const verb = status === 'closed' ? 'closed' : status === 'deferred' ? 'deferred' : 'reopened'
+      const verb =
+        status === 'closed' || status === 'deferred' || status === 'pinned'
+          ? status
+          : before === 'pinned'
+            ? 'unpinned'
+            : 'reopened'
       void write(id, {
         optimistic: { ...current, status },
         call: () => api.setStatus(id, status),

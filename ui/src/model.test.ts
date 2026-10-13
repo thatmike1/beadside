@@ -263,6 +263,38 @@ describe('bottom sections', () => {
   })
 })
 
+describe('pinned strip', () => {
+  const lane1 = FULL.lanes[0]!.label
+  const waitFlag = FULL.waiting.labels[0]!
+
+  it('leads the board, keeps pinned beads out of the lanes and open by default', () => {
+    const board = buildBoard(
+      [bead('p', { labels: [lane1], status: 'pinned' }), bead('a', { labels: [lane1] })],
+      { ...OPTS, isFolded: (_key, fallback) => fallback },
+    )
+    expect(board.sections.map((s) => [s.key, s.folded])).toEqual([
+      ['pinned', false],
+      ['waiting', false],
+      [`lane:${lane1}`, true],
+      ['deferred', true],
+      ['closed', true],
+    ])
+    expect(board.sections[0]?.groups[0]?.rows.map((r) => r.issue.id)).toEqual(['repo-p'])
+    expect(board.sections[2]?.count).toBe(1)
+    expect(board.counts.open).toBe(1)
+  })
+
+  it('still lists a pinned bead that waits on you', () => {
+    const board = buildBoard([bead('p', { labels: [lane1, waitFlag], status: 'pinned' })], OPTS)
+    expect(sectionsHolding(board, 'repo-p').map((s) => s.key)).toEqual(['pinned', 'waiting'])
+  })
+
+  it('is absent when nothing is pinned', () => {
+    const board = buildBoard([bead('a', { labels: [lane1] })], OPTS)
+    expect(board.sections.some((s) => s.key === 'pinned')).toBe(false)
+  })
+})
+
 describe('folding', () => {
   const lane1 = FULL.lanes[0]!.label
   const lane4 = FULL.lanes[3]!.label

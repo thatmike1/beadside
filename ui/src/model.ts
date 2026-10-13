@@ -1,4 +1,4 @@
-// derives the board shape (waiting strip, lanes, thoughts, deferred, closed, counts) from the flat issue list
+// derives the board shape (pinned strip, waiting strip, lanes, thoughts, deferred, closed, counts) from the flat issue list
 
 import type { BoardConfig, Comment, Issue, LaneConfig } from './api'
 
@@ -104,9 +104,9 @@ export function flagsOf(issue: Issue, flagLabels: string[]): string[] {
   return flagLabels.filter((f) => issue.labels.includes(f))
 }
 
-/** open or in progress and carrying waiting labels */
+/** open, in progress or pinned and carrying waiting labels */
 export function isWaiting(issue: Issue, config: BoardConfig): boolean {
-  if (issue.status !== 'open' && issue.status !== 'in_progress') return false
+  if (issue.status !== 'open' && issue.status !== 'in_progress' && issue.status !== 'pinned') return false
   if (config.thoughts && issue.labels.includes(config.thoughts.label)) return false
   if (config.waiting.labels.length === 0) return false
   return config.waiting.labels.some((label) => issue.labels.includes(label))
@@ -247,11 +247,27 @@ export function buildBoard(issues: Issue[], opts: BoardOptions): Board {
       : 0,
   }
 
-  const shown = live.filter((i) => i.status !== 'deferred')
+  // pinned beads stay open indefinitely: one strip at the top instead of a lane row
+  const pinned = live.filter((i) => i.status === 'pinned')
+  const shown = live.filter((i) => i.status !== 'deferred' && i.status !== 'pinned')
   const sections: BoardSection[] = []
 
+  if (pinned.length) {
+    sections.push({
+      key: 'pinned',
+      title: 'pinned',
+      axis: null,
+      note: 'standing beads, kept in view',
+      count: pinned.length,
+      signal: false,
+      folded: false,
+      groups: [{ key: 'pinned', head: null, caption: null, rows: rows(pinned, false, opts.config) }],
+    })
+  }
+
   if (opts.config.waiting.labels.length > 0) {
-    const waiting = shown.filter((i) => isWaiting(i, opts.config))
+    // a pinned bead waiting on you still shows here
+    const waiting = live.filter((i) => isWaiting(i, opts.config))
     sections.push({
       key: 'waiting',
       title: opts.config.waiting.title,
@@ -358,9 +374,11 @@ export function buildBoard(issues: Issue[], opts: BoardOptions): Board {
     groups: closed.length ? [{ key: 'closed', head: null, caption: null, rows: closed }] : [],
   })
 
-  // untouched sections start folded except the first, which is waiting on you when that exists
+  // untouched sections start folded except pinned and the first one after it, which is waiting on
+  // you when that exists
+  const lead = sections.findIndex((s) => s.key !== 'pinned')
   sections.forEach((section, index) => {
-    section.folded = opts.isFolded(section.key, index !== 0)
+    section.folded = opts.isFolded(section.key, section.key !== 'pinned' && index !== lead)
   })
 
   // a bead can show twice (waiting and its lane, an epic heading children in another lane);

@@ -1,6 +1,6 @@
 // typed fetch helpers for every endpoint in docs/api.md
 
-export type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'closed'
+export type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'pinned' | 'closed'
 
 export interface Issue {
   id: string

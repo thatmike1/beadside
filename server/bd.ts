@@ -2,9 +2,9 @@
 // argument shape; nothing the client sends ever becomes a flag.
 import { execFile, spawn } from 'node:child_process'
 
-export type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'closed'
+export type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'pinned' | 'closed'
 
-export const STATUSES: readonly Status[] = ['open', 'in_progress', 'blocked', 'deferred', 'closed']
+export const STATUSES: readonly Status[] = ['open', 'in_progress', 'blocked', 'deferred', 'pinned', 'closed']
 
 /** one record of `bd export` with `_type` (and the heavy embedded `comments`) dropped */
 export interface Issue {

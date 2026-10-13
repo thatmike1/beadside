@@ -65,6 +65,7 @@ Same ranking as the board's search box; see `docs/api.md` for the result shape.
 
 Out of the box with no configuration file, beadside displays a complete board over any beads backlog:
 - single open section containing all active beads, grouped hierarchically by epic and by project labels shared across 2+ beads
+- pinned beads (bd's `pinned` status, open indefinitely) in a strip at the top
 - deferred beads parked in their own section
 - recently closed section showing the last twelve resolved items
 - right pane detail view with descriptions, issue notes, and comment threads
