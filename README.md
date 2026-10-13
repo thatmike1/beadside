@@ -65,10 +65,10 @@ Same ranking as the board's search box; see `docs/api.md` for the result shape.
 
 The board opens on the **inbox**, which holds only what one action clears:
 
-- **replies**: beads where an agent commented after your latest note and you have not opened the bead since. The seen marker lives in your browser's localStorage, so opening a bead clears it there; the row stays until you move on
+- **replies**: beads where an agent commented after your latest note and you have not opened the bead since. A reply you open holds its place while it is open, then drops to the bottom of replies, dimmed and marked read, and leaves on the next reload or view switch, so skimming several in a row does not eat the list. The seen markers live in bd's key-value store (`bd kv`), not in the browser, so two boards over clones of the same beads database (a desktop and a server you read from the phone) share them once `bd sync` has run on both. See `docs/api.md` for the key scheme
 - beads carrying an **inbox label** (`inbox.labels`, by default the labels a note offers to clear)
 - **due**: overdue or due within 7 days (`due_at`), each with one-click re-dates (`+1w`, `+2w`, a date)
-- **stale**: three stale beads a day wanting a verdict. The day's three are drawn in an order seeded by the date and held for that day, so a bead you settle is not replaced until tomorrow
+- **stale**: three stale beads a day wanting a verdict. The day's three are drawn in an order seeded by the date and held for that day in `bd kv`, so a bead you settle is not replaced until tomorrow and every synced board shows the same three
 
 An emptied inbox says so. `b` switches to the **board**, the lanes as before, and `o` to **stale**: every open bead untouched for 30+ days (`updated_at`), oldest first. Parked, pinned and thought beads never go stale. Each stale row offers:
 
@@ -248,3 +248,4 @@ npm run typecheck        # tsc type checks across server and ui
 - `s`: focus search; in the box `Up` / `Down` step through hits, `Enter` opens the hit and returns the keys to the list, `Esc` clears and puts the board back where it was
 - `/`: focus quick capture
 - `t`: switch between light and dark; the board starts in whichever your system prefers and remembers the switch
+- `?`: show or hide this list; the `?` button at the top of the index opens it too

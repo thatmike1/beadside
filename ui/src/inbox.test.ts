@@ -24,7 +24,7 @@ const CONFIG: BoardConfig = {
 const NOW = new Date(2026, 9, 13, 15, 0)
 const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000).toISOString()
 
-const OPTS: InboxOptions = { config: CONFIG, now: NOW, seen: {}, picks: [], keep: null }
+const OPTS: InboxOptions = { config: CONFIG, now: NOW, seen: {}, picks: [], read: [], holding: null }
 
 /** a minimal open bead touched today; overrides win */
 function bead(id: string, over: Partial<Issue> = {}): Issue {
@@ -81,10 +81,62 @@ describe('inbox', () => {
     const reply = bead('r', { agent_reply: { at: daysAgo(1), name: 'Claude' } })
     const seen = { 'repo-r': daysAgo(1) }
     expect(buildInbox([reply], { ...OPTS, seen }).count).toBe(0)
-    expect(buildInbox([reply], { ...OPTS, seen, keep: 'repo-r' }).order).toEqual(['repo-r'])
+    expect(buildInbox([reply], { ...OPTS, seen, holding: 'repo-r', read: ['repo-r'] }).order).toEqual(['repo-r'])
     // a newer reply than the one opened comes back
     const newer = { ...reply, agent_reply: { at: daysAgo(0), name: 'Codex' } }
     expect(buildInbox([newer], { ...OPTS, seen }).order).toEqual(['repo-r'])
+  })
+
+  describe('replies read this visit', () => {
+    const replies = [
+      bead('a', { agent_reply: { at: daysAgo(1), name: 'Claude' } }),
+      bead('b', { agent_reply: { at: daysAgo(2), name: 'Claude' } }),
+      bead('c', { agent_reply: { at: daysAgo(3), name: 'Codex' } }),
+      bead('d', { agent_reply: { at: daysAgo(4), name: 'Codex' } }),
+    ]
+    const replyRows = (inbox: ReturnType<typeof buildInbox>) => ids(inbox.sections[0]?.rows ?? [])
+    // opening a reply writes its seen marker at the reply's own time
+    const seenFor = (...letters: string[]) =>
+      Object.fromEntries(letters.map((l) => [`repo-${l}`, replies.find((r) => r.id === `repo-${l}`)!.agent_reply!.at]))
+
+    it('the open one holds its place, marked read, until the selection moves on', () => {
+      const inbox = buildInbox(replies, { ...OPTS, seen: seenFor('a'), read: ['repo-a'], holding: 'repo-a' })
+      expect(replyRows(inbox)).toEqual(['repo-a', 'repo-b', 'repo-c', 'repo-d'])
+      expect([...inbox.read]).toEqual(['repo-a'])
+      expect(inbox.count).toBe(3)
+    })
+
+    it('three opened in a row stay listed, at the bottom in the order read', () => {
+      // a, b, c read; c is still the open bead
+      const reading = buildInbox(replies, { ...OPTS, seen: seenFor('a', 'b', 'c'), read: ['repo-a', 'repo-b', 'repo-c'], holding: 'repo-c' })
+      expect(replyRows(reading)).toEqual(['repo-c', 'repo-d', 'repo-a', 'repo-b'])
+      // the selection moves to d: c drops below a and b
+      const moved = buildInbox(replies, { ...OPTS, seen: seenFor('a', 'b', 'c'), read: ['repo-a', 'repo-b', 'repo-c'], holding: null })
+      expect(replyRows(moved)).toEqual(['repo-d', 'repo-a', 'repo-b', 'repo-c'])
+      expect([...moved.read]).toEqual(['repo-a', 'repo-b', 'repo-c'])
+      expect(moved.order).toEqual(['repo-d', 'repo-a', 'repo-b', 'repo-c'])
+      expect(moved.count).toBe(1)
+      expect(moved.sections[0]?.title).toBe('replies')
+    })
+
+    it('a rebuilt list, after a reload or a view switch, leaves them out', () => {
+      const rebuilt = buildInbox(replies, { ...OPTS, seen: seenFor('a', 'b', 'c') })
+      expect(replyRows(rebuilt)).toEqual(['repo-d'])
+      expect(rebuilt.read.size).toBe(0)
+    })
+
+    it('a read reply that gets a newer answer is unread again, back above', () => {
+      const answered = replies.map((r) => (r.id === 'repo-a' ? { ...r, agent_reply: { at: daysAgo(0), name: 'Claude' } } : r))
+      const inbox = buildInbox(answered, { ...OPTS, seen: seenFor('a', 'b'), read: ['repo-a', 'repo-b'] })
+      expect(replyRows(inbox)).toEqual(['repo-a', 'repo-c', 'repo-d', 'repo-b'])
+      expect([...inbox.read]).toEqual(['repo-b'])
+    })
+
+    it('a read reply that also carries an inbox label still counts for that label', () => {
+      const labelled = replies.map((r) => (r.id === 'repo-a' ? { ...r, labels: ['infra', 'needs-human'] } : r))
+      const inbox = buildInbox(labelled, { ...OPTS, seen: seenFor('a', 'b', 'c', 'd'), read: ['repo-a'] })
+      expect(inbox.count).toBe(1)
+    })
   })
 
   it('lists a bead once in keyboard order though it sits in two sections', () => {

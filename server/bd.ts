@@ -100,6 +100,16 @@ export function localDay(now: Date): string {
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
+// keys the board writes to bd's key-value store, all under its own namespace
+const KV_KEY_PATTERN = /^beadside\.[A-Za-z0-9_.-]{1,200}$/
+const MAX_KV_VALUE = 4_000
+
+/** throws unless the key sits in the board's `beadside.` namespace */
+export function assertKvKey(key: unknown): string {
+  if (typeof key !== 'string' || !KV_KEY_PATTERN.test(key)) throw new BdError(`invalid kv key: ${String(key)}`)
+  return key
+}
+
 /** throws unless the text is a non-empty string within the body limit */
 function assertText(text: unknown, what: string): string {
   if (typeof text !== 'string') throw new BdError(`${what} must be a string`)
@@ -405,6 +415,29 @@ export class BeadsClient {
     // `--flag=value` form so a value can never be read as a flag of its own
     await this.run(['update', id, `--due=${assertWhen(due, 'due')}`])
     return this.issue(id)
+  }
+
+  /**
+   * the key-value pairs under a prefix, from `bd kv list --json`. bd keeps them in the dolt
+   * database, so they travel with `bd sync` and never touch a bead's `updated_at`
+   */
+  async kvList(prefix: string): Promise<Record<string, string>> {
+    const raw = (await this.run(['kv', 'list', '--json'])).trim()
+    const payload = raw ? parseJson<unknown>(raw, 'bd kv list') : {}
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return {}
+    const out: Record<string, string> = {}
+    for (const [key, value] of Object.entries(payload)) {
+      if (key.startsWith(prefix) && typeof value === 'string') out[key] = value
+    }
+    return out
+  }
+
+  /** `bd kv set -- <key> <value>`, the key held to the board's namespace */
+  async kvSet(key: string, value: string): Promise<void> {
+    assertKvKey(key)
+    if (typeof value !== 'string' || !value || value.length > MAX_KV_VALUE) throw new BdError('invalid kv value')
+    // `--` so a value can never be read as a flag
+    await this.run(['kv', 'set', '--', key, value])
   }
 
   /** quick capture through `bd q`, which prints the new id and nothing else */

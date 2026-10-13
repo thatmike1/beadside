@@ -5,7 +5,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import * as api from './api'
 import type { BoardConfig, Comment, Issue, IssueDetail, IssueList, SearchHit, SearchScope, Status } from './api'
 import { buildBoard, linksOf, sectionsHolding, shortId, step } from './model'
-import { buildInbox, localDay, staleBeads } from './inbox'
+import { buildInbox, hasUnseenReply, localDay, staleBeads } from './inbox'
 import { IndexPane, type View } from './components/index-pane'
 import { SNOOZE_UNTIL } from './components/inbox-list'
 import { DetailPane, type RevealTarget } from './components/detail-pane'
@@ -16,7 +16,7 @@ import { useLive } from './use-live'
 import { isReadingState, openReading, writeSelectionHash } from './navigation'
 import { useNarrow } from './use-narrow'
 import { useTheme } from './use-theme'
-import { useSeen, useStalePicks } from './use-inbox-memory'
+import { useInboxMemory } from './use-inbox-memory'
 
 const EMPTY_CONFIG: BoardConfig = {
   agentsview: null,
@@ -66,7 +66,6 @@ export function App() {
   const toaster = useToast()
   const folds = useFolds()
   const { setFolded } = folds
-  const { seen, markSeen } = useSeen()
   const [view, setView] = useState<View>('inbox')
   const [now, setNow] = useState(() => new Date())
   useEffect(() => {
@@ -105,6 +104,11 @@ export function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [scope, setScope] = useState<SearchScope>('all')
   const [revealTarget, setRevealTarget] = useState<RevealTarget | null>(null)
+  // replies opened this visit, in the order read: they stay in the inbox, marked read, until a
+  // reload or a view switch. `holding` is the open one, which keeps its place until the selection moves
+  const [visitRead, setVisitRead] = useState<string[]>([])
+  const [holding, setHolding] = useState<string | null>(null)
+  const [help, setHelp] = useState(false)
   const searching = searchInput.trim().length > 0
 
   useEffect(() => {
@@ -143,10 +147,11 @@ export function App() {
   )
 
   const stale = useMemo(() => staleBeads(issues ?? [], now, config), [issues, now, config])
-  const picks = useStalePicks(issues ? stale : null, localDay(now))
+  const memory = useInboxMemory(localDay(now), issues ? stale : null, toaster.fail)
+  const { seen, markSeen, picks } = memory
   const inbox = useMemo(
-    () => buildInbox(issues ?? [], { config, now, seen, picks, keep: selected }),
-    [issues, config, now, seen, picks, selected],
+    () => buildInbox(issues ?? [], { config, now, seen, picks, read: visitRead, holding }),
+    [issues, config, now, seen, picks, visitRead, holding],
   )
   const staleNav = useMemo(() => {
     const order = stale.map((i) => i.id)
@@ -233,11 +238,19 @@ export function App() {
     if (next) select(next, false)
   }, [selected, issues, nav.order, view, repoName, select, reveal])
 
-  // opening a bead marks its agent reply seen; the inbox keeps the row until the selection moves on
-  const openReply = selected && selected === opened ? board.byId.get(selected)?.agent_reply : null
+  // opening a bead marks its agent reply seen. the row holds its place while open, then drops to
+  // the bottom of replies, marked read, until the list is rebuilt
+  const openIssue = selected && selected === opened ? board.byId.get(selected) : undefined
   useEffect(() => {
-    if (selected && openReply) markSeen(selected, openReply.at)
-  }, [selected, openReply, markSeen])
+    if (!memory.ready || !openIssue?.agent_reply || !hasUnseenReply(openIssue, seen)) return
+    const id = openIssue.id
+    markSeen(id, openIssue.agent_reply.at)
+    setHolding(id)
+    setVisitRead((prev) => [...prev.filter((other) => other !== id), id])
+  }, [memory.ready, openIssue, seen, markSeen])
+  useEffect(() => {
+    if (holding && holding !== selected) setHolding(null)
+  }, [holding, selected])
 
   // the hash is editable, so follow it when it changes under us
   useEffect(() => {
@@ -421,6 +434,9 @@ export function App() {
   const changeView = useCallback(
     (next: View) => {
       setView(next)
+      // a view switch rebuilds the inbox: replies read so far leave it
+      setVisitRead([])
+      setHolding(null)
       const order = next === 'inbox' ? inbox.order : next === 'stale' ? staleNav.order : board.order
       if (selected && order.includes(selected)) return
       const first = order[0]
@@ -660,7 +676,11 @@ export function App() {
       } else if (e.key === 'Enter') {
         e.preventDefault()
         noteRef.current?.focus()
+      } else if (e.key === '?') {
+        e.preventDefault()
+        setHelp((open) => !open)
       } else if (e.key === 'Escape') {
+        setHelp(false)
         if (searching) clearSearch()
         ;(document.activeElement as HTMLElement | null)?.blur()
       } else if (e.key === '/') {
@@ -683,7 +703,8 @@ export function App() {
       </div>
     )
   }
-  if (!session || !issues) return <div className="loading">reading the ledger…</div>
+  // the shared seen markers too, or every reply would flash unread first
+  if (!session || !issues || !memory.ready) return <div className="loading">reading the ledger…</div>
 
   const draft = selected ? (drafts[selected] ?? '') : ''
   const clear = selected ? (clears[selected] ?? true) : true
@@ -705,6 +726,8 @@ export function App() {
           fetchedAt={issuesQuery.data?.fetchedAt}
           theme={theme}
           onToggleTheme={toggleTheme}
+          help={help}
+          onHelp={setHelp}
           view={view}
           onView={changeView}
           inbox={inbox}

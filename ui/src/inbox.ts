@@ -1,6 +1,6 @@
 // derives the inbox (what the human can clear in one action) and the stale filter from the flat issue list
 
-import type { BoardConfig, Issue } from './api'
+import type { BoardConfig, Issue, StalePicks } from './api'
 import { isThought } from './model'
 
 /** a bead untouched this many days is stale */
@@ -28,15 +28,14 @@ export interface Inbox {
   order: string[]
   /** the same as order; the inbox never folds */
   layout: string[]
-  /** distinct beads in the inbox */
+  /** distinct beads in the inbox, replies read this visit left out */
   count: number
+  /** reply rows shown as read: opened this visit, kept until the list is rebuilt */
+  read: Set<string>
 }
 
-/** the stale beads picked for one day, kept so the pick holds when one of them leaves */
-export interface StalePicks {
-  day: string
-  ids: string[]
-}
+// the stale beads picked for one day, kept so the pick holds when one of them leaves
+export type { StalePicks }
 
 export interface InboxOptions {
   config: BoardConfig
@@ -45,8 +44,13 @@ export interface InboxOptions {
   seen: Record<string, string>
   /** today's stale picks */
   picks: string[]
-  /** the open bead stays listed until the selection moves on, though opening it marked it seen */
-  keep: string | null
+  /**
+   * replies opened this visit, in the order they were read. each stays listed, at the bottom of
+   * replies and marked read, until a reload or a view switch rebuilds the list
+   */
+  read: string[]
+  /** the open bead whose reply opening it marked: it holds its place until the selection moves on */
+  holding: string | null
 }
 
 /** the local calendar day, 2026-10-13 */
@@ -141,13 +145,22 @@ export function dailyPicks(
  * section; keyboard movement visits it once.
  */
 export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
-  const { config, now, seen, keep } = opts
+  const { config, now, seen, holding } = opts
   const live = issues.filter((i) => i.status !== 'closed')
   const touchedFirst = (a: Issue, b: Issue) => b.updated_at.localeCompare(a.updated_at)
+  const byId = new Map(issues.map((i) => [i.id, i]))
 
-  const replies = live
-    .filter((i) => hasUnseenReply(i, seen) || (i.id === keep && i.agent_reply))
+  const unread = live
+    .filter((i) => hasUnseenReply(i, seen) || (i.id === holding && i.agent_reply))
     .sort((a, b) => (b.agent_reply?.at ?? '').localeCompare(a.agent_reply?.at ?? ''))
+  // a read bead that got a newer reply since is unread again, back in the list above
+  const readRows = [...new Set(opts.read)]
+    .filter((id) => id !== holding)
+    .map((id) => byId.get(id))
+    .filter((i): i is Issue => !!i && i.status !== 'closed' && !!i.agent_reply && !hasUnseenReply(i, seen))
+  const replies = [...unread, ...readRows]
+  const read = new Set(readRows.map((i) => i.id))
+  if (holding && unread.some((i) => i.id === holding) && !hasUnseenReply(byId.get(holding)!, seen)) read.add(holding)
 
   const labels = config.inbox.labels
   const asked = labels.length
@@ -162,7 +175,6 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
     .sort((a, b) => (a.due_at ?? '').localeCompare(b.due_at ?? ''))
 
   const staleIds = new Set(staleBeads(issues, now, config).map((i) => i.id))
-  const byId = new Map(issues.map((i) => [i.id, i]))
   const picked = opts.picks
     .filter((id) => staleIds.has(id))
     .map((id) => byId.get(id))
@@ -179,12 +191,14 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
 
   const order: string[] = []
   const placed = new Set<string>()
+  const counted = new Set<string>()
   for (const section of sections) {
     for (const issue of section.rows) {
+      if (!(section.key === 'reply' && read.has(issue.id))) counted.add(issue.id)
       if (placed.has(issue.id)) continue
       placed.add(issue.id)
       order.push(issue.id)
     }
   }
-  return { sections, order, layout: order, count: order.length }
+  return { sections, order, layout: order, count: counted.size, read }
 }

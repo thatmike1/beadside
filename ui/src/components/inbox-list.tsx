@@ -44,14 +44,17 @@ function ActionRow(props: {
   issue: Issue
   why: string
   hot?: boolean
+  /** a reply opened this visit: dimmed, with a read mark, until the list is rebuilt */
+  read?: boolean
   actions?: ReactNode
   list: ListProps
 }) {
-  const { issue, why, hot, actions, list } = props
+  const { issue, why, hot, read, actions, list } = props
   const axis = axisOf(issue, list.config.lanes)
   const selected = issue.id === list.selected
+  const className = ['irow', selected ? 'sel' : '', read ? 'seen' : ''].filter(Boolean).join(' ')
   return (
-    <div className={selected ? 'irow sel' : 'irow'} style={axisStyle(axis, list.config) as CSSProperties}>
+    <div className={className} style={axisStyle(axis, list.config) as CSSProperties}>
       <Row
         row={{ issue, child: false, waiting: false }}
         axis={axis}
@@ -63,6 +66,7 @@ function ActionRow(props: {
       />
       {why || actions ? (
         <div className="iact">
+          {read ? <span className="readmark">read</span> : null}
           {why ? <span className={hot ? 'why hot' : 'why'}>{why}</span> : null}
           {actions}
         </div>
@@ -108,11 +112,11 @@ function DueActions({ issue, list }: { issue: Issue; list: ListProps }) {
   )
 }
 
-function rowFor(kind: InboxKind, issue: Issue, list: ListProps) {
+function rowFor(kind: InboxKind, issue: Issue, list: ListProps, read = false) {
   if (kind === 'reply') {
     const reply = issue.agent_reply
     const why = reply ? `${reply.name} replied ${formatShortDate(reply.at)}` : ''
-    return <ActionRow key={issue.id} issue={issue} why={why} list={list} />
+    return <ActionRow key={issue.id} issue={issue} why={why} read={read} list={list} />
   }
   if (kind === 'due') {
     return (
@@ -143,7 +147,8 @@ function rowFor(kind: InboxKind, issue: Issue, list: ListProps) {
 /** the landing view: only what clears in one action, and a finished state when that is nothing */
 export function InboxList(props: ListProps & { inbox: Inbox; onBoard: () => void }) {
   const { inbox } = props
-  if (!inbox.count) {
+  // read replies keep the list up until it is rebuilt, even with nothing left to clear
+  if (!inbox.order.length) {
     return (
       <div className="cleared">
         <b>Inbox clear.</b>
@@ -162,11 +167,11 @@ export function InboxList(props: ListProps & { inbox: Inbox; onBoard: () => void
         <div className="sec" key={section.key}>
           <div className={section.key === 'label' || section.key === 'due' ? 'sechead hot' : 'sechead'}>
             <span>{section.title}</span>
-            <span className="n">{section.rows.length}</span>
+            <span className="n">{section.rows.filter((i) => !(section.key === 'reply' && inbox.read.has(i.id))).length}</span>
             <span className="note">{section.note}</span>
           </div>
           <div className="secrule" />
-          {section.rows.map((issue) => rowFor(section.key, issue, props))}
+          {section.rows.map((issue) => rowFor(section.key, issue, props, inbox.read.has(issue.id)))}
         </div>
       ))}
     </>

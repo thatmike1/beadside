@@ -1,4 +1,4 @@
-// the left index: counts, quick capture, sections of one-line rows, keyboard hint
+// the left index: counts, views and search on one row, quick capture, sections of one-line rows
 
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { CSSProperties, RefObject } from 'react'
@@ -30,6 +30,9 @@ interface IndexPaneProps {
   search: SearchProps
   theme: Theme
   onToggleTheme: () => void
+  /** the key list behind the `?` button */
+  help: boolean
+  onHelp: (open: boolean) => void
   view: View
   onView: (view: View) => void
   inbox: Inbox
@@ -80,6 +83,8 @@ export function IndexPane(props: IndexPaneProps) {
     search,
     theme,
     onToggleTheme,
+    help,
+    onHelp,
     view,
     onView,
     inbox,
@@ -134,6 +139,7 @@ export function IndexPane(props: IndexPaneProps) {
           >
             {theme === 'dark' ? 'light' : 'dark'}
           </button>
+          <KeyHelp open={help} onOpen={onHelp} />
         </div>
         <div className="counts">
           <em>{counts.open}</em> open<span className="sep">/</span>
@@ -158,71 +164,76 @@ export function IndexPane(props: IndexPaneProps) {
         </div>
       </div>
 
-      <div className="views" role="tablist" aria-label="view">
-        {(
-          [
-            ['inbox', 'inbox', inbox.count, 'i'],
-            ['board', 'board', null, 'b'],
-            ['stale', 'stale', stale.length, 'o'],
-          ] as const
-        ).map(([key, label, n, kbd]) => (
-          <button
-            key={key}
-            role="tab"
-            aria-selected={view === key}
-            className={view === key ? 'on' : ''}
-            onClick={() => onView(key)}
-            title={kbd}
-          >
-            {label}
-            {n !== null ? <span className={key === 'inbox' && n ? 'n hot' : 'n'}>{n}</span> : null}
-          </button>
-        ))}
-      </div>
-
-      <div className="search">
-        <input
-          ref={search.ref}
-          value={search.value}
-          type="search"
-          aria-label="search beads"
-          placeholder="search titles, descriptions, notes, comments"
-          onChange={(e) => {
-            if (!searching && e.target.value.trim() && listRef.current) boardScroll.current = listRef.current.scrollTop
-            search.onChange(e.target.value)
-          }}
-          onKeyDown={(e) => {
-            if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-              e.preventDefault()
-              search.onMove(e.key === 'ArrowDown' ? 1 : -1)
-            } else if (e.key === 'Enter') {
-              e.preventDefault()
-              search.onSubmit()
-            } else if (e.key === 'Escape') {
-              e.preventDefault()
-              if (search.value) search.onClear()
-              else e.currentTarget.blur()
-            }
-          }}
-        />
-        {search.value ? (
-          <button className="sclear" onClick={search.onClear} aria-label="clear search">
-            &times;
-          </button>
-        ) : null}
-        <span className="scopes" role="radiogroup" aria-label="search scope">
-          {SCOPES.map(({ scope, label }) => (
+      <div className="bar">
+        <div className="views" role="tablist" aria-label="view">
+          {(
+            [
+              ['inbox', 'inbox', inbox.count, 'i'],
+              ['board', 'board', null, 'b'],
+              ['stale', 'stale', stale.length, 'o'],
+            ] as const
+          ).map(([key, label, n, kbd]) => (
             <button
-              key={scope}
-              role="radio"
-              aria-checked={search.scope === scope}
-              className={search.scope === scope ? 'on' : ''}
-              onClick={() => search.onScope(scope)}
+              key={key}
+              role="tab"
+              aria-selected={view === key}
+              className={view === key ? 'on' : ''}
+              onClick={() => onView(key)}
+              title={kbd}
             >
               {label}
+              {n !== null ? <span className={key === 'inbox' && n ? 'n hot' : 'n'}>{n}</span> : null}
             </button>
           ))}
-        </span>
+        </div>
+
+        <div className="search">
+          <input
+            ref={search.ref}
+            value={search.value}
+            type="search"
+            aria-label="search beads"
+            placeholder="search"
+            title="titles, descriptions, notes and comments, closed beads too (s)"
+            onChange={(e) => {
+              if (!searching && e.target.value.trim() && listRef.current) boardScroll.current = listRef.current.scrollTop
+              search.onChange(e.target.value)
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                e.preventDefault()
+                search.onMove(e.key === 'ArrowDown' ? 1 : -1)
+              } else if (e.key === 'Enter') {
+                e.preventDefault()
+                search.onSubmit()
+              } else if (e.key === 'Escape') {
+                e.preventDefault()
+                if (search.value) search.onClear()
+                else e.currentTarget.blur()
+              }
+            }}
+          />
+          {search.value ? (
+            <button className="sclear" onClick={search.onClear} aria-label="clear search">
+              &times;
+            </button>
+          ) : null}
+          {searching ? (
+            <span className="scopes" role="radiogroup" aria-label="search scope">
+              {SCOPES.map(({ scope, label }) => (
+                <button
+                  key={scope}
+                  role="radio"
+                  aria-checked={search.scope === scope}
+                  className={search.scope === scope ? 'on' : ''}
+                  onClick={() => search.onScope(scope)}
+                >
+                  {label}
+                </button>
+              ))}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <div className="capture" hidden={searching}>
@@ -329,46 +340,63 @@ export function IndexPane(props: IndexPaneProps) {
         })}
       </div>
 
-      <div className="hint">
-        <span>
-          <kbd>&#8593;</kbd>
-          <kbd>&#8595;</kbd> <kbd>j</kbd>
-          <kbd>k</kbd> move
-        </span>
-        <span>
-          <kbd>enter</kbd> note
-        </span>
-        <span>
-          <kbd>esc</kbd> leave
-        </span>
-        <span>
-          <kbd>c</kbd> copy id
-        </span>
-        <span>
-          <kbd>n</kbd> defer
-        </span>
-        <span>
-          <kbd>m</kbd> close
-        </span>
-        <span>
-          <kbd>h</kbd>
-          <kbd>l</kbd> fold
-        </span>
-        <span>
-          <kbd>i</kbd>
-          <kbd>b</kbd>
-          <kbd>o</kbd> inbox, board, stale
-        </span>
-        <span>
-          <kbd>s</kbd> search
-        </span>
-        <span>
-          <kbd>/</kbd> capture
-        </span>
-        <span>
-          <kbd>t</kbd> theme
-        </span>
-      </div>
     </aside>
+  )
+}
+
+/** every key the board answers to, in the order the popover lists them */
+const KEYS: { keys: string[]; what: string }[] = [
+  { keys: ['\u2191', '\u2193', 'j', 'k'], what: 'move' },
+  { keys: ['enter'], what: 'write a note' },
+  { keys: ['esc'], what: 'leave a field, clear the search' },
+  { keys: ['i', 'b', 'o'], what: 'inbox, board, stale' },
+  { keys: ['s'], what: 'search' },
+  { keys: ['/'], what: 'capture a thought' },
+  { keys: ['c'], what: 'copy the id' },
+  { keys: ['n'], what: 'defer' },
+  { keys: ['m'], what: 'close' },
+  { keys: ['h', 'l'], what: 'fold, unfold' },
+  { keys: ['t'], what: 'theme' },
+  { keys: ['?'], what: 'this list' },
+]
+
+/** the `?` button and the key list it opens; `?` toggles it from anywhere outside a field */
+function KeyHelp({ open, onOpen }: { open: boolean; onOpen: (open: boolean) => void }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  // a click anywhere else closes it
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onOpen(false)
+    }
+    document.addEventListener('pointerdown', onDown)
+    return () => document.removeEventListener('pointerdown', onDown)
+  }, [open, onOpen])
+  return (
+    <span className="keyhelp" ref={ref}>
+      <button
+        className={open ? 'qmark on' : 'qmark'}
+        aria-label="keyboard keys"
+        aria-expanded={open}
+        title="?"
+        onClick={() => onOpen(!open)}
+      >
+        ?
+      </button>
+      {open ? (
+        <div className="keys" role="dialog" aria-label="keyboard keys">
+          {KEYS.map(({ keys, what }) => (
+            <div className="krow" key={what}>
+              <span className="kk">
+                {keys.map((k) => (
+                  <kbd key={k}>{k}</kbd>
+                ))}
+              </span>
+              <span>{what}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </span>
   )
 }

@@ -10,6 +10,17 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { agentReply, classifyAuthor, defaultHuman, type HumanIdentity } from './authors'
 import { BdError, type BeadsClient, type Issue, type IssueWithComments, type Status } from './bd'
 import { resolveConfig, type ResolvedBoardConfig } from './config'
+import {
+  assertDay,
+  assertPickIds,
+  assertTimestamp,
+  deviceName,
+  KV_PREFIX,
+  picksKey,
+  picksValue,
+  readInboxState,
+  seenKey,
+} from './inbox-state'
 import { notesFor, sessionsFor } from './joins'
 import { LiveFeed, type LiveFeedOptions, type LiveState } from './live'
 import { DEFAULT_LIMIT, SCOPES, searchIssues, type SearchScope } from './search'
@@ -25,6 +36,8 @@ export interface AppConfig {
   config?: ResolvedBoardConfig
   /** absolute path to the built ui, served at / when it exists */
   uiDist?: string | null
+  /** names this board's keys in bd's kv store; defaults to the hostname */
+  device?: string
   /** follow the events journal and push changes; off unless given (tests stay spawn-free) */
   live?: LiveOptions | false
 }
@@ -115,6 +128,7 @@ export function createBoard(config: AppConfig): Board {
   const boardConfig = config.config ?? resolveConfig({})
   const human = config.human ?? defaultHuman(process.env['USER'] ?? 'unknown')
   const uiDist = config.uiDist ?? null
+  const device = config.device ?? deviceName()
 
   // one export serves the list, search and ids. without the live feed a list read always
   // re-exports; with it the cache holds until the feed, a write or the reconcile says otherwise.
@@ -191,12 +205,13 @@ export function createBoard(config: AppConfig): Board {
   const listAge = () => (isLive() ? Infinity : 0)
   const searchAge = () => (isLive() ? Infinity : CORPUS_MAX_AGE_MS)
 
-  // bd writes go through one dolt working set; keep them one at a time
+  // bd writes go through one dolt working set; keep them one at a time. a kv write leaves
+  // the issues alone, so it keeps the cached export
   let writeChain: Promise<unknown> = Promise.resolve()
-  const serialise = <T>(work: () => Promise<T>): Promise<T> => {
-    invalidate()
+  const serialise = <T>(work: () => Promise<T>, touchesIssues = true): Promise<T> => {
+    if (touchesIssues) invalidate()
     const next = writeChain.then(work, work).finally(() => {
-      invalidate()
+      if (touchesIssues) invalidate()
     })
     writeChain = next.catch(() => undefined)
     return next
@@ -363,6 +378,31 @@ export function createBoard(config: AppConfig): Board {
     if (typeof due !== 'string') throw new BdError('due must be a string')
     const issue = await serialise(() => client.setDue(id, due))
     return c.json({ issue })
+  })
+
+  // the inbox's memory, shared by every board on this beads database through `bd kv`
+  app.get('/api/inbox-state', async (c) => {
+    const day = assertDay(c.req.query('day'))
+    return c.json(readInboxState(await client.kvList(KV_PREFIX), day, device))
+  })
+
+  // opening a bead marks its agent reply seen, under this device's key only
+  app.post('/api/issues/:id/seen', async (c) => {
+    const id = c.req.param('id')
+    const key = seenKey(device, id)
+    const at = assertTimestamp((await readBody(c))['at'])
+    await serialise(() => client.kvSet(key, at), false)
+    return c.json({ id, at })
+  })
+
+  // stores a day's stale picks for this device, then answers with the picks that hold:
+  // another device's when it drew first
+  app.post('/api/stale-picks', async (c) => {
+    const body = await readBody(c)
+    const day = assertDay(body['day'])
+    const ids = assertPickIds(body['ids'])
+    await serialise(() => client.kvSet(picksKey(device), picksValue({ day, ids }, new Date())), false)
+    return c.json(readInboxState(await client.kvList(KV_PREFIX), day, device))
   })
 
   app.all('/api/*', (c) => c.json({ error: 'not found' }, 404))

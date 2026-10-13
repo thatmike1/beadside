@@ -183,6 +183,22 @@ export interface IssueList {
   fetchedAt: string
 }
 
+/** the stale beads picked for one day */
+export interface StalePicks {
+  day: string
+  ids: string[]
+}
+
+/** what the inbox remembers across devices, from bd's key-value store */
+export interface InboxState {
+  /** the name this board's keys carry */
+  device: string
+  /** per bead, the newest agent reply any device opened it at */
+  seen: Record<string, string>
+  /** the day's picks from the device that drew first, null when none has */
+  picks: StalePicks | null
+}
+
 let token: string | null = null
 
 /** raw json fetch that turns `{ error }` bodies into thrown errors */
@@ -320,4 +336,19 @@ export function createIssue(title: string, labels?: string[]): Promise<{ issue: 
 /** removes a bead the board just filed; the server refuses any other id */
 export function deleteIssue(id: string): Promise<{ deleted: string }> {
   return del<{ deleted: string }>(`/api/issues/${encodeURIComponent(id)}`)
+}
+
+/** seen markers and the day's stale picks, shared by every board on this beads database */
+export function getInboxState(day: string): Promise<InboxState> {
+  return call<InboxState>(`/api/inbox-state?day=${encodeURIComponent(day)}`)
+}
+
+/** marks the bead's agent reply seen at `at`, the reply's own timestamp */
+export function markSeen(id: string, at: string): Promise<{ id: string; at: string }> {
+  return post<{ id: string; at: string }>(`/api/issues/${encodeURIComponent(id)}/seen`, { at })
+}
+
+/** stores a day's stale picks; the answer carries the picks that hold, another device's when it drew first */
+export function setStalePicks(picks: StalePicks): Promise<InboxState> {
+  return post<InboxState>('/api/stale-picks', picks)
 }

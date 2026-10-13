@@ -190,16 +190,23 @@ textarea {
 .counts .hot em {
   color: var(--signal);
 }
-/* ---------- views: inbox, board, stale ---------- */
+/* ---------- one row: the views, then search ---------- */
+.bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  padding: 6px var(--pad-index) 4px;
+}
 .views {
   flex: 0 0 auto;
   display: flex;
-  gap: 18px;
-  padding: 8px var(--pad-index) 0;
+  gap: 16px;
   font-size: 13.5px;
 }
 .views button {
-  padding: 2px 0 5px;
+  padding: 5px 0 4px;
   color: var(--ink-3);
   border-bottom: 2px solid transparent;
   transition: color 120ms ease, border-color 120ms ease;
@@ -224,11 +231,11 @@ textarea {
 }
 /* ---------- search ---------- */
 .search {
-  flex: 0 0 auto;
+  flex: 1 1 180px;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px var(--pad-index) 4px;
 }
 .search input {
   flex: 1 1 auto;
@@ -633,6 +640,19 @@ textarea {
   font-size: 12.5px;
   color: var(--ink-3);
 }
+.irow.seen:not(.sel) .row,
+.irow.seen:not(.sel) .iact {
+  opacity: 0.5;
+}
+.readmark {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 0 6px;
+  line-height: 17px;
+  border-radius: 3px;
+  background: var(--fill-2);
+  color: var(--ink-2);
+}
 .iact .why.hot {
   color: var(--signal-ink);
   font-weight: 560;
@@ -704,17 +724,56 @@ textarea {
   color: var(--ink-3);
 }
 
-.hint {
-  flex: 0 0 auto;
-  padding: 9px var(--pad-index) 12px;
-  font-size: 12.5px;
-  color: var(--ink-3);
-  border-top: 1px solid var(--rule-soft);
-  display: flex;
-  gap: 14px;
-  flex-wrap: wrap;
+/* ---------- keys: the ? button in the brand row and its list ---------- */
+.keyhelp {
+  position: relative;
+  align-self: center;
+  display: inline-flex;
 }
-.hint kbd {
+.brand .qmark {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+  color: var(--ink-3);
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.brand .qmark:hover,
+.brand .qmark.on {
+  background: var(--fill);
+  color: var(--ink);
+}
+.keys {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  min-width: 290px;
+  padding: 10px 14px 11px;
+  border-radius: 6px;
+  background: var(--bg-read);
+  box-shadow:
+    0 0 0 1px var(--rule),
+    0 14px 30px -14px var(--shadow);
+  font-size: 12.75px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.krow {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  gap: 10px;
+  align-items: center;
+  padding: 3px 0;
+}
+.kk {
+  display: flex;
+  gap: 3px;
+}
+.keys kbd {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   background: rgb(var(--tint) / 0.07);
@@ -1373,7 +1432,8 @@ h2.sub {
   .ihead {
     padding-top: calc(14px + env(safe-area-inset-top));
   }
-  .hint {
+  /* no keyboard on a phone */
+  .keyhelp {
     display: none;
   }
   .search {

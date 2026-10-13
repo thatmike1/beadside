@@ -61,6 +61,9 @@ const body = (req) =>
 
 const find = (id) => issues.find((i) => i.id === id)
 
+// the inbox's memory, which the real server keeps in `bd kv`
+const inboxState = { device: 'mock', seen: {}, picks: null }
+
 createServer(async (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1')
   const m = url.pathname.match(/^\/api\/issues\/([^/]+)(?:\/(comment|status|priority|labels))?$/)
@@ -84,6 +87,11 @@ createServer(async (req, res) => {
     const corpus = issues.map((issue) => ({ issue, comments: comments[issue.id] ?? [] }))
     const scope = url.searchParams.get('scope') ?? 'all'
     return json(res, 200, searchIssues(corpus, url.searchParams.get('q') ?? '', { scope, human }))
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/inbox-state') {
+    const day = url.searchParams.get('day')
+    return json(res, 200, { ...inboxState, picks: inboxState.picks?.day === day ? inboxState.picks : null })
   }
 
   if (req.method === 'GET' && url.pathname === '/api/issue-ids') {
@@ -114,6 +122,16 @@ createServer(async (req, res) => {
   if (req.method === 'POST') {
     if (req.headers['x-bd-token'] !== token) return json(res, 403, { error: 'bad token' })
     const b = await body(req)
+
+    if (url.pathname === '/api/stale-picks') {
+      if (inboxState.picks?.day !== b.day) inboxState.picks = { day: b.day, ids: b.ids }
+      return json(res, 200, inboxState)
+    }
+    const seen = url.pathname.match(/^\/api\/issues\/([^/]+)\/seen$/)
+    if (seen) {
+      inboxState.seen[seen[1]] = b.at
+      return json(res, 200, { id: seen[1], at: b.at })
+    }
 
     if (url.pathname === '/api/issues') {
       const issue = {

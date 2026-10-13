@@ -126,6 +126,14 @@ interface BoardConfig {
   derived: DerivedConfig
 }
 
+interface StalePicks { day: string; ids: string[] }
+
+interface InboxState {
+  device: string                   // the name this board's kv keys carry, from the hostname
+  seen: Record<string, string>     // bead id -> the newest agent_reply.at any device opened it at
+  picks: StalePicks | null         // the day's picks of the device that drew first; null when none has
+}
+
 interface SessionInfo {
   token: string
   repo: { name: string; path: string }
@@ -144,6 +152,7 @@ interface SessionInfo {
 | GET | `/api/issues` | | `{ issues: Issue[], fetchedAt: string }` all statuses, the UI filters. Each issue carries `agent_reply`, null unless an agent commented after the human's latest comment; a bead the human never commented on has none |
 | GET | `/api/issue-ids` | | `{ ids: string[] }` all statuses; readable cross-origin from the T3 Code renderer and loopback pages, which link short ids in chat |
 | GET | `/api/issues/:id` | | `IssueDetail` |
+| GET | `/api/inbox-state?day=<YYYY-MM-DD>` | | `InboxState`: the seen markers merged over every device and the day's stale picks. See Inbox state |
 | GET | `/api/search?q=<words>&scope=all\|open\|closed&limit=<1-500>` | | `SearchResult`, the same ranking `beadside search` prints |
 | GET | `/api/events` | | Server-sent events, same-origin only. `state` (`{ live: boolean }`) on connect and whenever live updates start or stop; `changed` (`{}`) when the ledger moved and lists should be refetched. See Live updates |
 | POST | `/api/issues/:id/comment` | `{ text: string, clear?: boolean }` | `IssueDetail` |
@@ -152,6 +161,8 @@ interface SessionInfo {
 | POST | `/api/issues/:id/labels` | `{ add?: string[], remove?: string[] }` | `{ issue }` |
 | POST | `/api/issues/:id/keep` | `{}` | `{ issue }`; a stale bead stays as it is and leaves the stale filter |
 | POST | `/api/issues/:id/due` | `{ due: string }` | `{ issue }`; `due` is anything bd's `--due` reads: `+1w`, `next monday`, `2026-10-20`, an ISO timestamp |
+| POST | `/api/issues/:id/seen` | `{ at: string }` | `{ id, at }`; marks the bead's agent reply seen. `at` is the reply's own `agent_reply.at`, an ISO timestamp |
+| POST | `/api/stale-picks` | `{ day: string, ids: string[] }` | `InboxState`; stores this device's picks for `day` (at most 10 ids) and answers with the picks that hold, another device's when it drew first |
 | POST | `/api/issues` | `{ title: string, labels?: string[] }` | `{ issue }` quick capture via `bd q` |
 | DELETE | `/api/issues/:id` | | `{ deleted }`; only ids this server process created, otherwise 403. Undo for quick capture |
 
@@ -174,6 +185,21 @@ With the journal off, a bd without it, or a follower that keeps exiting, `state`
 - create: `bd q <title> -l <label>...`; defaults to `config.capture.labels` when none given.
 
 The server never accepts a raw argument list from the client. Every route maps to a fixed argument shape; ids are validated against `^[A-Za-z0-9_-]+(\.[0-9]+)?$` before use. Every `bd` call runs with `cwd` set to the repo path and `--no-color` where supported; output is parsed, never echoed to the client on success.
+
+## Inbox state
+
+What the inbox remembers lives in bd's key-value store (`bd kv`), which sits in the Dolt database, so it travels with `bd sync` between clones and never writes to a bead (a bead write would move `updated_at` and break the stale filter). Each board writes only keys that carry its own device name, the hostname lowercased to `[a-z0-9-]`:
+
+- `beadside.seen.<device>.<bead id>` = the `agent_reply.at` the bead was opened at
+- `beadside.picks.<device>` = `{"day":"2026-10-13","ids":[...],"at":"<ISO time of the draw>"}`
+
+Two clones that set the same key to different values between syncs make `bd sync` halt with a merge conflict that needs a hand to resolve; keys per device never collide. Reading merges them: a bead is seen at the newest marker any device wrote, and a day's picks are the ones with the earliest `at` for that day, so every board settles on the same three once the syncs meet. A board draws and stores picks only when no device has any for the day yet.
+
+- seen: `bd kv set -- beadside.seen.<device>.<id> <at>`, the id validated like every other, `at` an ISO timestamp.
+- stale picks: `bd kv set -- beadside.picks.<device> <json>`, `day` as `YYYY-MM-DD`, each id validated.
+- inbox state: one `bd kv list --json`, keys outside `beadside.` ignored.
+
+These writes go through the same one-at-a-time queue as the others but keep the cached export, since no issue changed. kv writes are not in the events journal, so another device's markers show on the next read of `/api/inbox-state`; the UI rereads it when the window regains focus.
 
 ## Comment authors
 
