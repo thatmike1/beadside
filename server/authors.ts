@@ -58,3 +58,29 @@ export function defaultHuman(name: string): HumanIdentity {
   const clean = name.trim() || 'unknown'
   return { id: `human:${clean}`, name: clean }
 }
+
+/** an agent comment newer than the human's latest note: a reply the human has not answered */
+export interface AgentReply {
+  /** created_at of the newest such comment */
+  at: string
+  /** display name of the agent that wrote it */
+  name: string
+}
+
+/**
+ * the newest agent comment written after the human's own latest comment, or null. a bead the
+ * human never commented on has nothing to reply to; legacy unknown authors count as neither.
+ */
+export function agentReply(
+  comments: readonly { author: string; created_at: string }[],
+  human: HumanIdentity,
+): AgentReply | null {
+  let mine = ''
+  let reply: AgentReply | null = null
+  for (const comment of comments) {
+    const by = classifyAuthor(comment.author, human)
+    if (by.self && comment.created_at > mine) mine = comment.created_at
+    if (by.kind === 'agent' && (!reply || comment.created_at > reply.at)) reply = { at: comment.created_at, name: by.name }
+  }
+  return mine && reply && reply.at > mine ? reply : null
+}

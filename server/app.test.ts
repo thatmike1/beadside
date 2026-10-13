@@ -127,6 +127,8 @@ describe('reads', () => {
     const body = await json<ListBody>(await app.request('/api/issues'))
     expect(body.issues).toHaveLength(1)
     expect(body.issues[0]).not.toHaveProperty('_type')
+    // no comments in the canned export, so nothing replied to the human
+    expect(body.issues[0]?.['agent_reply']).toBeNull()
     expect(Number.isNaN(Date.parse(body.fetchedAt))).toBe(false)
   })
 
@@ -274,6 +276,20 @@ describe('writes', () => {
       ['update', 'repo-abc', '--priority', '0'],
       ['update', 'repo-abc', '--add-label=feat', '--remove-label=bug'],
     ])
+  })
+
+  it('keeps and re-dates through their own routes, rejecting a bad due before bd', async () => {
+    const { app, calls } = appFor()
+    expect((await app.request(post('/api/issues/repo-abc/keep', {}))).status).toBe(200)
+    expect((await app.request(post('/api/issues/repo-abc/due', { due: '+1w' }))).status).toBe(200)
+    expect((await app.request(post('/api/issues/repo-abc/due', { due: 7 }))).status).toBe(400)
+    expect((await app.request(post('/api/issues/repo-abc/due', { due: '$(boom)' }))).status).toBe(400)
+    expect((await app.request(post('/api/issues/repo-abc/keep', {}, null))).status).toBe(403)
+    const writes = calls.filter((args) => args[0] !== 'show')
+    expect(writes).toHaveLength(2)
+    expect(writes[0]?.slice(0, 3)).toEqual(['update', 'repo-abc', '--set-metadata'])
+    expect(writes[0]?.[3]).toMatch(/^kept_at=\d{4}-\d{2}-\d{2}$/)
+    expect(writes[1]).toEqual(['update', 'repo-abc', '--due=+1w'])
   })
 
   it('creates a capture and returns the issue using capture.labels', async () => {

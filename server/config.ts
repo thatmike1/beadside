@@ -50,6 +50,15 @@ export interface ResolvedNoteConfig {
   offerToClear: string[]
 }
 
+export interface InboxConfig {
+  labels?: string[]
+}
+
+export interface ResolvedInboxConfig {
+  /** labels that put a bead in the inbox: a call the human clears in one action */
+  labels: string[]
+}
+
 export interface ThoughtsConfig {
   label: string
   title?: string | null
@@ -89,6 +98,7 @@ export interface BoardConfig {
   subLabels?: string[]
   waiting?: WaitingConfig
   note?: NoteConfig
+  inbox?: InboxConfig
   thoughts?: ThoughtsConfig
   flags?: string[]
   capture?: CaptureConfig
@@ -104,6 +114,7 @@ export interface ResolvedBoardConfig {
   subLabels: string[]
   waiting: ResolvedWaitingConfig
   note: ResolvedNoteConfig
+  inbox: ResolvedInboxConfig
   thoughts: ResolvedThoughtsConfig | null
   flags: string[]
   capture: ResolvedCaptureConfig
@@ -269,6 +280,19 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     noteConfig = { addLabel: null, offerToClear: [] }
   }
 
+  // without its own block the inbox takes the labels a note offers to clear, which are the
+  // ones a single reply settles
+  let inbox: ResolvedInboxConfig
+  if (obj['inbox'] !== undefined && obj['inbox'] !== null) {
+    if (typeof obj['inbox'] !== 'object' || Array.isArray(obj['inbox'])) {
+      throw new ConfigError('inbox must be an object', 'inbox')
+    }
+    const i = obj['inbox'] as Record<string, unknown>
+    inbox = { labels: validateLabelArray(i['labels'], 'inbox.labels') }
+  } else {
+    inbox = { labels: [...noteConfig.offerToClear] }
+  }
+
   let thoughts: ResolvedThoughtsConfig | null = null
   if (obj['thoughts'] !== undefined && obj['thoughts'] !== null) {
     if (typeof obj['thoughts'] !== 'object' || Array.isArray(obj['thoughts'])) {
@@ -302,6 +326,7 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     ...waiting.labels,
     ...(noteConfig.addLabel ? [noteConfig.addLabel] : []),
     ...noteConfig.offerToClear,
+    ...inbox.labels,
     ...(thoughts ? [thoughts.label] : []),
     ...flags,
   ])
@@ -325,6 +350,7 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     subLabels,
     waiting,
     note: noteConfig,
+    inbox,
     thoughts,
     flags,
     capture,

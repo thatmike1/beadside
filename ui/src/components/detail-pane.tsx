@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import type { BoardConfig, Comment, Issue, IssueDetail, SearchField, Status } from '../api'
-import { axisOf, flagsOf, projectOf, shortId, unreadNote } from '../model'
+import { axisOf, flagsOf, projectOf, shortId, unreadNote, type LinkGroup } from '../model'
 import { axisStyle, formatDate, formatShortDate, statusLabel } from '../format'
 import { MarkdownText } from './markdown'
 import { WriteRow } from './write-row'
@@ -40,6 +40,10 @@ interface DetailPaneProps {
   onCopyId: (id: string) => void
   /** phone only: back to the list */
   onBack: () => void
+  /** dependencies and dependents by kind */
+  links: LinkGroup[]
+  byId: Map<string, Issue>
+  onOpenLink: (id: string) => void
 }
 
 /** the comment header label: You for the board's human, the agent or human name, or a legacy marker */
@@ -114,7 +118,7 @@ export function DetailPane(props: DetailPaneProps) {
   if (!issue) {
     return (
       <main className="read">
-        <div className="loading">no bead selected.</div>
+        <div className="loading">no bead open.</div>
       </main>
     )
   }
@@ -183,10 +187,10 @@ export function DetailPane(props: DetailPaneProps) {
                 <span>closed {formatDate(full.closed_at)}</span>
               </>
             ) : null}
-            {full.dependency_count ? (
+            {full.due_at && full.status !== 'closed' ? (
               <>
                 <span className="s">/</span>
-                <span>{full.dependency_count} blocked by</span>
+                <span>due {formatDate(full.due_at)}</span>
               </>
             ) : null}
             {project ? (
@@ -235,6 +239,39 @@ export function DetailPane(props: DetailPaneProps) {
               <h2 className="sub">notes</h2>
               <div className={revealed?.field === 'notes' ? 'notes flash' : 'notes'} data-field="notes">
                 <MarkdownText text={issue.notes} />
+              </div>
+            </>
+          ) : null}
+
+          {props.links.length ? (
+            <>
+              <h2 className="sub">links</h2>
+              <div className="links">
+                {props.links.map((group) => (
+                  <div className="lgroup" key={group.key}>
+                    <span className="lkind">{group.title}</span>
+                    <div className="lrows">
+                      {group.ids.map((id) => {
+                        const other = props.byId.get(id)
+                        const closed = other?.status === 'closed'
+                        return (
+                          <button
+                            className={closed ? 'lrow struck' : 'lrow'}
+                            key={id}
+                            onClick={() => props.onOpenLink(id)}
+                            style={axisStyle(other ? axisOf(other, config.lanes) : null, config) as CSSProperties}
+                          >
+                            <span className="mono lid">{shortId(id, repoName)}</span>
+                            <span className="lt">{other?.title ?? 'not in this ledger'}</span>
+                            {other && other.status !== 'open' ? (
+                              <span className="chip">{statusLabel(other.status)}</span>
+                            ) : null}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </>
           ) : null}

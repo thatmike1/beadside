@@ -419,7 +419,11 @@ export function sectionsHolding(board: Board, id: string): BoardSection[] {
  * the next id keyboard movement lands on, one step down (1) or up (-1). from a row that is
  * folded away it walks the unfolded layout to the nearest row still on screen.
  */
-export function step(board: Board, from: string | null, delta: 1 | -1): string | null {
+export function step(
+  board: Pick<Board, 'order' | 'layout'>,
+  from: string | null,
+  delta: 1 | -1,
+): string | null {
   const { order, layout } = board
   const at = from ? order.indexOf(from) : -1
   if (at >= 0) return order[Math.min(order.length - 1, Math.max(0, at + delta))] ?? null
@@ -431,6 +435,57 @@ export function step(board: Board, from: string | null, delta: 1 | -1): string |
     if (id !== undefined && onScreen.has(id)) return id
   }
   return (delta === 1 ? order[order.length - 1] : order[0]) ?? null
+}
+
+export interface LinkGroup {
+  key: string
+  /** bd show's heading for this kind and direction, lowercased */
+  title: string
+  ids: string[]
+}
+
+/** kinds in display order; out is read from the bead holding the edge, in from the other end */
+const LINK_KINDS: { key: string; types: string[]; out: string; in: string }[] = [
+  { key: 'parent', types: ['parent-child'], out: 'parent', in: 'children' },
+  { key: 'blocks', types: ['blocks'], out: 'depends on', in: 'blocks' },
+  // bd writes the related kind under two names
+  { key: 'related', types: ['related', 'relates-to'], out: 'related', in: 'related' },
+  { key: 'discovered', types: ['discovered-from'], out: 'discovered from', in: 'discovered' },
+  { key: 'supersedes', types: ['supersedes'], out: 'superseded by', in: 'supersedes' },
+]
+
+/**
+ * the bead's dependencies and dependents grouped by kind, headed the way `bd show` heads them.
+ * related has no direction, so both ends land in one group. a kind the board does not know
+ * keeps its own name.
+ */
+export function linksOf(id: string, issues: Issue[]): LinkGroup[] {
+  const groups = new Map<string, LinkGroup>()
+  const add = (key: string, title: string, other: string) => {
+    if (other === id) return
+    const group = groups.get(key) ?? { key, title, ids: [] }
+    if (!group.ids.includes(other)) group.ids.push(other)
+    groups.set(key, group)
+  }
+  for (const issue of issues) {
+    for (const edge of issue.dependencies ?? []) {
+      const outward = edge.issue_id === id
+      if (!outward && edge.depends_on_id !== id) continue
+      const kind = LINK_KINDS.find((k) => k.types.includes(edge.type))
+      const other = outward ? edge.depends_on_id : edge.issue_id
+      if (!kind) {
+        add(`${edge.type}:${outward ? 'out' : 'in'}`, outward ? edge.type : `${edge.type} (inbound)`, other)
+        continue
+      }
+      const same = kind.out === kind.in
+      add(same ? kind.key : `${kind.key}:${outward ? 'out' : 'in'}`, outward ? kind.out : kind.in, other)
+    }
+  }
+  const rank = (key: string) => {
+    const at = LINK_KINDS.findIndex((k) => key === k.key || key.startsWith(`${k.key}:`))
+    return (at < 0 ? LINK_KINDS.length : at) * 2 + (key.endsWith(':in') ? 1 : 0)
+  }
+  return [...groups.values()].sort((a, b) => rank(a.key) - rank(b.key) || a.key.localeCompare(b.key))
 }
 
 /**

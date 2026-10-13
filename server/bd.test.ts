@@ -223,6 +223,40 @@ describe('status transitions', () => {
   })
 })
 
+describe('keep and due', () => {
+  it('keeps with one metadata stamp of the local day, then reads the issue back', async () => {
+    const { client, calls } = clientFor()
+    await client.keep('repo-abc', new Date(2026, 9, 3, 9, 30))
+    expect(calls).toEqual([
+      ['update', 'repo-abc', '--set-metadata', 'kept_at=2026-10-03'],
+      ['show', 'repo-abc', '--json'],
+    ])
+  })
+
+  it('re-dates with --due= and rejects a hostile value before spawning bd', async () => {
+    const { client, calls } = clientFor()
+    await client.setDue('repo-abc', 'next monday')
+    await client.setDue('repo-abc', '2026-10-10T22:00:00Z')
+    expect(calls.filter((args) => args[0] !== 'show')).toEqual([
+      ['update', 'repo-abc', '--due=next monday'],
+      ['update', 'repo-abc', '--due=2026-10-10T22:00:00Z'],
+    ])
+    const fresh = clientFor()
+    await expect(fresh.client.setDue('repo-abc', 'x; rm -rf /')).rejects.toThrow(/invalid due/)
+    await expect(fresh.client.setDue('repo-abc', '')).rejects.toThrow(/invalid due/)
+    await expect(fresh.client.keep('--force')).rejects.toThrow(/invalid issue id/)
+    expect(fresh.calls).toEqual([])
+  })
+
+  it('reads bd show dependencies into the export edge shape', async () => {
+    const { client } = clientFor('open', {
+      dependencies: [{ id: 'repo-hu8', title: 'x', status: 'open', dependency_type: 'supersedes' }],
+    })
+    const issue = await client.issue('repo-abc')
+    expect(issue.dependencies).toEqual([{ issue_id: 'repo-abc', depends_on_id: 'repo-hu8', type: 'supersedes' }])
+  })
+})
+
 describe('priority, labels and create', () => {
   it('updates priority and rejects anything outside 0-4', async () => {
     const { client, calls } = clientFor()

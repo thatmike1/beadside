@@ -1,6 +1,6 @@
 # beadside
 
-Local web reader for a [beads](https://github.com/gastownhall/beads) backlog. Index on the left with sections and lanes, and the selected bead always open on the right with its Markdown-rendered description, notes, comments, sessions, and linked notes. Sending a note from the composer appends a comment under your own author id and can flag the bead so your coding agent reads it first on its next run. Search covers ids, titles, descriptions, notes and comments, on the board and from a terminal.
+Local web reader for a [beads](https://github.com/gastownhall/beads) backlog. It opens on an inbox of what you can clear in one action. Index on the left with sections and lanes, and the selected bead always open on the right with its Markdown-rendered description, notes, comments, sessions, and linked notes. Sending a note from the composer appends a comment under your own author id and can flag the bead so your coding agent reads it first on its next run. Search covers ids, titles, descriptions, notes and comments, on the board and from a terminal.
 
 ![beadside](docs/screenshot.png)
 
@@ -61,6 +61,23 @@ Same ranking as the board's search box; see `docs/api.md` for the result shape.
 | `--no-agentsview` | | force disable AgentsView join |
 | `--no-open` | `false` | do not open default browser on start |
 
+## inbox, board and stale
+
+The board opens on the **inbox**, which holds only what one action clears:
+
+- **replies**: beads where an agent commented after your latest note and you have not opened the bead since. The seen marker lives in your browser's localStorage, so opening a bead clears it there; the row stays until you move on
+- beads carrying an **inbox label** (`inbox.labels`, by default the labels a note offers to clear)
+- **due**: overdue or due within 7 days (`due_at`), each with one-click re-dates (`+1w`, `+2w`, a date)
+- **stale**: three stale beads a day wanting a verdict. The day's three are drawn in an order seeded by the date and held for that day, so a bead you settle is not replaced until tomorrow
+
+An emptied inbox says so. `b` switches to the **board**, the lanes as before, and `o` to **stale**: every open bead untouched for 30+ days (`updated_at`), oldest first. Parked, pinned and thought beads never go stale. Each stale row offers:
+
+- **keep**: stamps `kept_at=<day>` into the bead's metadata, which moves `updated_at` so it leaves the filter for 30 days
+- **snooze 4w**: `bd defer --until +4w`
+- **close**: closes it with the reason "stale, closed from beadside"
+
+The detail pane lists the bead's links grouped by kind and direction, headed as `bd show` heads them (parent, children, depends on, blocks, related, discovered from, discovered, superseded by, supersedes); bd's `related` and `relates-to` share one group. A click opens the linked bead.
+
 ## works with no config
 
 Out of the box with no configuration file, beadside displays a complete board over any beads backlog:
@@ -69,6 +86,7 @@ Out of the box with no configuration file, beadside displays a complete board ov
 - deferred beads parked in their own section
 - recently closed section showing the last twelve resolved items
 - right pane detail view with descriptions, issue notes, and comment threads
+- an inbox with agent replies, due dates and stale beads, and a stale filter
 - quick capture (`/`) to file new beads directly into your backlog
 - full keyboard navigation
 
@@ -91,6 +109,10 @@ A flag label such as `needs-human`. Your coding agent adds this label when the n
 ### note flag
 
 A flag label such as `human-note`. When you submit a note from the board's composer box, beadside adds this label. Your agent inspects this label first, addresses your note, and clears the flag.
+
+### inbox labels
+
+`inbox.labels` names the labels that put a bead in the inbox. Leave the block out and the inbox takes `note.offerToClear`, the labels one note settles. Keep slower labels, such as one asking for a conversation first, out of it: they stay in the waiting section.
 
 ### thoughts drawer
 
@@ -127,6 +149,7 @@ Here is an example `.beadside.json`:
     "addLabel": "human-note",
     "offerToClear": ["needs-human"]
   },
+  "inbox": { "labels": ["needs-human"] },
   "thoughts": {
     "label": "idea",
     "title": "ideas",
@@ -209,18 +232,19 @@ npm run typecheck        # tsc type checks across server and ui
 ## layout
 
 - `server/`: Node + Hono backend. `bd.ts` is the only place `bd` is executed; input arguments and IDs are validated before dispatch. `search.ts` is the search shared by the route and the cli, `authors.ts` reads comment authors.
-- `ui/`: Vite + React frontend. `model.ts` derives render sections, groupings, and counts from the resolved board config and issue list.
+- `ui/`: Vite + React frontend. `model.ts` derives render sections, groupings, counts and links from the resolved board config and issue list; `inbox.ts` derives the inbox and the stale filter.
 - `docs/api.md`: HTTP contract between frontend and backend.
 
 ## keyboard
 
+- `i` / `b` / `o`: inbox, board, stale
 - `j` / `k` or `Down` / `Up`: move selection
 - `Enter`: focus note composer
 - `Esc`: leave note composer / blur
 - `c`: copy short issue ID
 - `n`: defer selected bead
 - `m`: close selected bead
-- `h` / `l`: fold / unfold section
+- `h` / `l`: fold / unfold section (board)
 - `s`: focus search; in the box `Up` / `Down` step through hits, `Enter` opens the hit and returns the keys to the list, `Esc` clears and puts the board back where it was
 - `/`: focus quick capture
 - `t`: switch between light and dark; the board starts in whichever your system prefers and remembers the switch

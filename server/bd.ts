@@ -25,6 +25,7 @@ export interface Issue {
   comment_count: number
   dependency_count: number
   dependent_count: number
+  dependencies?: Dependency[]
   // bd carries more per-issue fields (assignee, design, acceptance_criteria, defer_until…);
   // they pass through untouched for the ui to use.
   [extra: string]: unknown
@@ -82,6 +83,21 @@ export function assertLabel(label: unknown): string {
     throw new BdError('labels must be 1-128 characters and contain no whitespace')
   }
   return label
+}
+
+// what bd's date flags take: +1w, tomorrow, next monday, 2026-10-20, an ISO timestamp
+const WHEN_PATTERN = /^[A-Za-z0-9 +:._-]{1,64}$/
+
+/** throws unless the value reads as one of bd's relative or absolute dates */
+export function assertWhen(value: unknown, what: string): string {
+  if (typeof value !== 'string' || !WHEN_PATTERN.test(value.trim())) throw new BdError(`invalid ${what} value`)
+  return value.trim()
+}
+
+/** the local calendar day, 2026-10-13, as a keep stamps it */
+export function localDay(now: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
 }
 
 /** throws unless the text is a non-empty string within the body limit */
@@ -326,7 +342,7 @@ export class BeadsClient {
     if (!STATUSES.includes(status)) throw new BdError(`unsupported status: ${status}`)
     if (reason !== undefined && typeof reason !== 'string') throw new BdError('reason must be a string')
     if (until !== undefined && typeof until !== 'string') throw new BdError('until must be a string')
-    if (until && !/^[A-Za-z0-9 +:_-]{1,64}$/.test(until)) throw new BdError('invalid until value')
+    if (until) assertWhen(until, 'until')
 
     const current = await this.issue(id)
     // no-op unless a defer is re-dated
@@ -373,6 +389,24 @@ export class BeadsClient {
     return this.issue(id)
   }
 
+  /**
+   * keeps a stale bead without changing it: one metadata stamp, `kept_at=<day>`, which moves
+   * `updated_at` so the bead leaves the stale filter and leaves a trace of why it moved
+   */
+  async keep(id: string, now = new Date()): Promise<Issue> {
+    assertId(id)
+    await this.run(['update', id, '--set-metadata', `kept_at=${localDay(now)}`])
+    return this.issue(id)
+  }
+
+  /** `bd update <id> --due=<when>`; bd reads +1w, next monday, a date or an ISO timestamp */
+  async setDue(id: string, due: string): Promise<Issue> {
+    assertId(id)
+    // `--flag=value` form so a value can never be read as a flag of its own
+    await this.run(['update', id, `--due=${assertWhen(due, 'due')}`])
+    return this.issue(id)
+  }
+
   /** quick capture through `bd q`, which prints the new id and nothing else */
   async create(title: string, labels: string[] = []): Promise<Issue> {
     const clean = assertText(title, 'title')
@@ -391,13 +425,46 @@ export class BeadsClient {
   }
 }
 
+/** one edge as `bd export` writes it: issue_id depends on depends_on_id, of a kind */
+export interface Dependency {
+  issue_id: string
+  depends_on_id: string
+  type: string
+}
+
+/**
+ * `bd export` lists edges; `bd show --json` lists the issues behind them with a
+ * `dependency_type`. both come out in the export's shape, so a write's read-back
+ * matches the list it replaces.
+ */
+function edges(id: string, raw: unknown): Dependency[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const out: Dependency[] = []
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const edge = item as Record<string, unknown>
+    if (typeof edge['depends_on_id'] === 'string') {
+      out.push({
+        issue_id: typeof edge['issue_id'] === 'string' ? edge['issue_id'] : id,
+        depends_on_id: edge['depends_on_id'],
+        type: String(edge['type'] ?? ''),
+      })
+    } else if (typeof edge['id'] === 'string') {
+      out.push({ issue_id: id, depends_on_id: edge['id'], type: String(edge['dependency_type'] ?? '') })
+    }
+  }
+  return out
+}
+
 /** drops the export-only keys and fills the fields the contract promises */
 function normalise(record: Record<string, unknown>): Issue {
   const { _type, comments, ...rest } = record
   void _type
   void comments
+  const dependencies = edges(String(rest['id'] ?? ''), rest['dependencies'])
   return {
     ...rest,
+    ...(dependencies ? { dependencies } : {}),
     id: String(rest['id'] ?? ''),
     title: String(rest['title'] ?? ''),
     description: typeof rest['description'] === 'string' ? rest['description'] : '',

@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import * as api from './api'
 import type { BoardConfig, Comment, Issue, IssueDetail, IssueList, SearchHit, SearchScope, Status } from './api'
-import { buildBoard, sectionsHolding, shortId, step } from './model'
-import { IndexPane } from './components/index-pane'
+import { buildBoard, linksOf, sectionsHolding, shortId, step } from './model'
+import { buildInbox, localDay, staleBeads } from './inbox'
+import { IndexPane, type View } from './components/index-pane'
+import { SNOOZE_UNTIL } from './components/inbox-list'
 import { DetailPane, type RevealTarget } from './components/detail-pane'
 import { Toast } from './components/toast'
 import { useToast } from './use-toast'
@@ -14,6 +16,7 @@ import { useLive } from './use-live'
 import { isReadingState, openReading, writeSelectionHash } from './navigation'
 import { useNarrow } from './use-narrow'
 import { useTheme } from './use-theme'
+import { useSeen, useStalePicks } from './use-inbox-memory'
 
 const EMPTY_CONFIG: BoardConfig = {
   agentsview: null,
@@ -23,6 +26,7 @@ const EMPTY_CONFIG: BoardConfig = {
   subLabels: [],
   waiting: { labels: [], title: 'waiting on you', note: null },
   note: { addLabel: null, offerToClear: [] },
+  inbox: { labels: [] },
   thoughts: null,
   flags: [],
   capture: { labels: [] },
@@ -33,6 +37,18 @@ const EMPTY_CONFIG: BoardConfig = {
 const SEARCH_DEBOUNCE_MS = 180
 /** polling while the server's live feed is off or unreachable */
 const POLL_MS = 20_000
+/** how often the inbox re-reads the clock for due dates and stale ages */
+const CLOCK_MS = 60_000
+const DAY_MS = 86_400_000
+
+/** what the ui can tell of a re-date before bd answers: +Nd, +Nw or a plain date */
+function guessDue(due: string, now: Date): string | null {
+  const relative = /^\+(\d+)([dw])$/.exec(due)
+  if (relative) return new Date(now.getTime() + Number(relative[1]) * (relative[2] === 'w' ? 7 : 1) * DAY_MS).toISOString()
+  const date = /^(\d{4})-(\d{2})-(\d{2})$/.exec(due)
+  if (date) return new Date(Number(date[1]), Number(date[2]) - 1, Number(date[3])).toISOString()
+  return null
+}
 
 interface WriteSpec {
   /** local guess applied before the server answers */
@@ -50,6 +66,13 @@ export function App() {
   const toaster = useToast()
   const folds = useFolds()
   const { setFolded } = folds
+  const { seen, markSeen } = useSeen()
+  const [view, setView] = useState<View>('inbox')
+  const [now, setNow] = useState(() => new Date())
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), CLOCK_MS)
+    return () => window.clearInterval(timer)
+  }, [])
   const noteRef = useRef<HTMLTextAreaElement>(null)
   const captureRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -71,6 +94,9 @@ export function App() {
   })
 
   const [selected, setSelected] = useState<string | null>(null)
+  // the bead the user opened: a click, a key, a link. a selection the board made by itself
+  // (first paint, stepping off a row that left) never marks a reply seen
+  const [opened, setOpened] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   const [clears, setClears] = useState<Record<string, boolean>>({})
   const [capture, setCapture] = useState('')
@@ -116,6 +142,19 @@ export function App() {
     [issues, config, repoName, folds.isFolded],
   )
 
+  const stale = useMemo(() => staleBeads(issues ?? [], now, config), [issues, now, config])
+  const picks = useStalePicks(issues ? stale : null, localDay(now))
+  const inbox = useMemo(
+    () => buildInbox(issues ?? [], { config, now, seen, picks, keep: selected }),
+    [issues, config, now, seen, picks, selected],
+  )
+  const staleNav = useMemo(() => {
+    const order = stale.map((i) => i.id)
+    return { order, layout: order }
+  }, [stale])
+  // keyboard movement walks whichever list is on screen
+  const nav = view === 'inbox' ? inbox : view === 'stale' ? staleNav : board
+
   const knownLabels = useMemo(() => {
     const seen = new Set<string>([
       ...config.lanes.map((l) => l.label),
@@ -130,6 +169,7 @@ export function App() {
     (id: string, userInitiated = true) => {
       if (!id) return
       setSelected(id)
+      if (userInitiated) setOpened(id)
       writeSelectionHash(id, selected, repoName, userInitiated)
     },
     [selected, repoName],
@@ -143,6 +183,7 @@ export function App() {
         return
       }
       setSelected(id)
+      setOpened(id)
       openReading(id, repoName)
       setReading(true)
     },
@@ -170,19 +211,33 @@ export function App() {
     [board, folds],
   )
 
-  // first paint: the hash wins, otherwise the first row of the index
+  // first paint: the hash wins and opens in the detail pane, the list still landing on the inbox.
+  // otherwise the board opens its first row, and the inbox opens nothing: an unread reply waits
+  // for the user, and an empty inbox's finished state stands alone
+  const firstPaint = useRef(true)
   useEffect(() => {
     if (selected || !issues?.length) return
-    const wanted = decodeURIComponent(window.location.hash.slice(1))
+    const wanted = firstPaint.current ? decodeURIComponent(window.location.hash.slice(1)) : ''
+    firstPaint.current = false
     const match = wanted
       ? issues.find((i) => i.id === wanted || shortId(i.id, repoName) === wanted)
       : undefined
-    const next = match?.id ?? board.order[0] ?? issues[0]?.id ?? null
-    if (next) {
-      if (match) reveal(match.id)
-      select(next, false)
+    if (match) {
+      reveal(match.id)
+      select(match.id, false)
+      setOpened(match.id)
+      return
     }
-  }, [selected, issues, board.order, repoName, select, reveal])
+    if (view === 'inbox') return
+    const next = nav.order[0] ?? null
+    if (next) select(next, false)
+  }, [selected, issues, nav.order, view, repoName, select, reveal])
+
+  // opening a bead marks its agent reply seen; the inbox keeps the row until the selection moves on
+  const openReply = selected && selected === opened ? board.byId.get(selected)?.agent_reply : null
+  useEffect(() => {
+    if (selected && openReply) markSeen(selected, openReply.at)
+  }, [selected, openReply, markSeen])
 
   // the hash is editable, so follow it when it changes under us
   useEffect(() => {
@@ -194,6 +249,7 @@ export function App() {
       if (match) {
         reveal(match.id)
         setSelected(match.id)
+        setOpened(match.id)
       }
     }
     window.addEventListener('hashchange', onHash)
@@ -209,7 +265,16 @@ export function App() {
   const applyIssue = useCallback(
     (next: Issue) => {
       qc.setQueryData<IssueList>(['issues'], (prev) =>
-        prev ? { ...prev, issues: prev.issues.map((i) => (i.id === next.id ? next : i)) } : prev,
+        prev
+          ? {
+              ...prev,
+              // a write reads the issue back from bd show, which has no agent_reply: keep the
+              // list's until the refetch
+              issues: prev.issues.map((i) =>
+                i.id === next.id ? { ...next, agent_reply: next.agent_reply ?? i.agent_reply ?? null } : i,
+              ),
+            }
+          : prev,
       )
       qc.setQueryData<IssueDetail>(['issue', next.id], (prev) =>
         prev ? { ...prev, issue: next } : prev,
@@ -268,12 +333,11 @@ export function App() {
     [current, repoName, write, refresh],
   )
 
-  const onStatus = useCallback(
-    (status: Status) => {
-      if (!current) return
-      const before = current.status
+  const changeStatus = useCallback(
+    (issue: Issue, status: Status, extra?: { reason?: string; until?: string }, message?: string) => {
+      const before = issue.status
       if (before === status) return
-      const id = current.id
+      const id = issue.id
       const short = shortId(id, repoName)
       const verb =
         status === 'closed' || status === 'deferred' || status === 'pinned'
@@ -282,16 +346,100 @@ export function App() {
             ? 'unpinned'
             : 'reopened'
       void write(id, {
-        optimistic: { ...current, status },
-        call: () => api.setStatus(id, status),
-        message: `${short} ${verb}`,
+        optimistic: { ...issue, status },
+        call: () => api.setStatus(id, status, extra),
+        message: message ?? `${short} ${verb}`,
         undo: async () => {
           await api.setStatus(id, before)
           refresh(id)
         },
       })
     },
-    [current, repoName, write, refresh],
+    [repoName, write, refresh],
+  )
+
+  const onStatus = useCallback(
+    (status: Status) => {
+      if (current) changeStatus(current, status)
+    },
+    [current, changeStatus],
+  )
+
+  // a verdict from a row: the bead leaves the list, so an open one hands the selection on
+  const stepOff = useCallback(
+    (id: string) => {
+      if (id !== selected) return
+      const below = step(nav, id, 1)
+      const next = below && below !== id ? below : step(nav, id, -1)
+      if (next && next !== id) select(next, false)
+    },
+    [nav, selected, select],
+  )
+
+  const rowActions = useMemo(
+    () => ({
+      onRedate: (issue: Issue, due: string) => {
+        const id = issue.id
+        const before = issue.due_at ?? null
+        const guess = guessDue(due, new Date())
+        stepOff(id)
+        void write(id, {
+          optimistic: guess ? { ...issue, due_at: guess } : null,
+          call: () => api.setDue(id, due),
+          message: `${shortId(id, repoName)} due ${due}`,
+          undo: before
+            ? async () => {
+                await api.setDue(id, before)
+                refresh(id)
+              }
+            : null,
+        })
+      },
+      onKeep: (issue: Issue) => {
+        const id = issue.id
+        stepOff(id)
+        // bd moves updated_at; there is no writing the old one back, so no undo
+        void write(id, {
+          optimistic: { ...issue, updated_at: new Date().toISOString() },
+          call: () => api.keepIssue(id),
+          message: `${shortId(id, repoName)} kept, off the stale list for 30 days`,
+          undo: null,
+        })
+      },
+      onSnooze: (issue: Issue) => {
+        stepOff(issue.id)
+        changeStatus(issue, 'deferred', { until: SNOOZE_UNTIL }, `${shortId(issue.id, repoName)} snoozed 4 weeks`)
+      },
+      onClose: (issue: Issue) => {
+        stepOff(issue.id)
+        changeStatus(issue, 'closed', { reason: 'stale, closed from beadside' })
+      },
+    }),
+    [stepOff, write, repoName, refresh, changeStatus],
+  )
+
+  const changeView = useCallback(
+    (next: View) => {
+      setView(next)
+      const order = next === 'inbox' ? inbox.order : next === 'stale' ? staleNav.order : board.order
+      if (selected && order.includes(selected)) return
+      const first = order[0]
+      if (first) select(first, false)
+    },
+    [inbox.order, staleNav.order, board.order, selected, select],
+  )
+
+  const links = useMemo(
+    () => (current ? linksOf(current.id, issues ?? []) : []),
+    [current, issues],
+  )
+
+  const openLink = useCallback(
+    (id: string) => {
+      if (view === 'board') reveal(id)
+      open(id)
+    },
+    [view, reveal, open],
   )
 
   const onLabels = useCallback(
@@ -474,18 +622,21 @@ export function App() {
         moveHit(e.key === 'ArrowDown' || e.key === 'j' ? 1 : -1)
       } else if (e.key === 'ArrowDown' || e.key === 'j') {
         e.preventDefault()
-        const next = step(board, selected, 1)
+        const next = step(nav, selected, 1)
         if (next) select(next)
       } else if (e.key === 'ArrowUp' || e.key === 'k') {
         e.preventDefault()
-        const next = step(board, selected, -1)
+        const next = step(nav, selected, -1)
         if (next) select(next)
+      } else if (!searching && (e.key === 'i' || e.key === 'b' || e.key === 'o')) {
+        e.preventDefault()
+        changeView(e.key === 'i' ? 'inbox' : e.key === 'b' ? 'board' : 'stale')
       } else if (e.key === 's') {
         e.preventDefault()
         searchRef.current?.focus()
         searchRef.current?.select()
-      } else if (searching && (e.key === 'h' || e.key === 'l')) {
-        // folds belong to the board, which is hidden behind the results
+      } else if ((searching || view !== 'board') && (e.key === 'h' || e.key === 'l')) {
+        // folds belong to the board, which is hidden behind the results or another view
       } else if (e.key === 'h' || e.key === 'l') {
         e.preventDefault()
         if (!selected) return
@@ -503,8 +654,8 @@ export function App() {
         onStatus(status)
         // in search results the bead stays listed, so the selection stays with it
         if (searching) return
-        const below = step(board, selected, 1)
-        const next = below && below !== selected ? below : step(board, selected, -1)
+        const below = step(nav, selected, 1)
+        const next = below && below !== selected ? below : step(nav, selected, -1)
         if (next && next !== selected) select(next, false)
       } else if (e.key === 'Enter') {
         e.preventDefault()
@@ -522,7 +673,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [board, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme])
+  }, [board, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme])
 
   if (sessionQuery.isError || issuesQuery.isError) {
     const error = sessionQuery.error ?? issuesQuery.error
@@ -554,6 +705,12 @@ export function App() {
           fetchedAt={issuesQuery.data?.fetchedAt}
           theme={theme}
           onToggleTheme={toggleTheme}
+          view={view}
+          onView={changeView}
+          inbox={inbox}
+          stale={stale}
+          now={now}
+          actions={rowActions}
           search={{
             ref: searchRef,
             value: searchInput,
@@ -600,6 +757,9 @@ export function App() {
           onLabels={onLabels}
           onCopyId={onCopyId}
           onBack={closeReading}
+          links={links}
+          byId={board.byId}
+          onOpenLink={openLink}
         />
       </div>
       <Toast toast={toaster.toast} onUndo={toaster.runUndo} onDismiss={toaster.dismiss} />

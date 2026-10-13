@@ -102,11 +102,22 @@ describe('resolveConfig defaults', () => {
     expect(config.subLabels).toEqual([])
     expect(config.waiting).toEqual({ labels: [], title: 'waiting on you', note: null })
     expect(config.note).toEqual({ addLabel: null, offerToClear: [] })
+    expect(config.inbox).toEqual({ labels: [] })
     expect(config.thoughts).toBeNull()
     expect(config.flags).toEqual([])
     expect(config.capture).toEqual({ labels: [] })
     expect(config.derived.allFlags).toEqual([])
     expect(config.derived.hotChips).toEqual([])
+  })
+
+  it('fills inbox labels from note.offerToClear unless inbox names its own', () => {
+    expect(resolveConfig({ note: { offerToClear: ['needs-human'] } }).inbox).toEqual({ labels: ['needs-human'] })
+    expect(
+      resolveConfig({ note: { offerToClear: ['needs-human'] }, inbox: { labels: ['ask-me'] } }).inbox,
+    ).toEqual({ labels: ['ask-me'] })
+    expect(resolveConfig({ inbox: { labels: [] } }).inbox).toEqual({ labels: [] })
+    expect(() => resolveConfig({ inbox: { labels: ['two words'] } })).toThrowError(/inbox\.labels\[0\]/)
+    expect(() => resolveConfig({ inbox: [] })).toThrowError(/inbox must be an object/)
   })
 
   it('sets unlaned title to "no lane" when lanes are present', () => {

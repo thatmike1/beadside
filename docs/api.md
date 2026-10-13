@@ -32,6 +32,20 @@ interface Issue {            // one record of `bd export` (JSONL, `_type === 'is
   comment_count: number
   dependency_count: number
   dependent_count: number
+  due_at?: string | null
+  dependencies?: Dependency[]  // outgoing edges; `bd show`'s shape is rewritten to this one on the way out
+  agent_reply?: AgentReply | null   // GET /api/issues only, see below
+}
+
+interface Dependency {       // issue_id depends on depends_on_id, as `bd export` writes it
+  issue_id: string
+  depends_on_id: string
+  type: string               // parent-child | blocks | related | relates-to | discovered-from | supersedes | ...
+}
+
+interface AgentReply {       // the newest agent comment written after the board human's latest comment
+  at: string
+  name: string               // Claude, Codex, Gemini, Agent
 }
 
 interface Author {           // the server's reading of a stored author string
@@ -91,6 +105,7 @@ interface LaneConfig { label: string; note: string | null; glyph: string; color:
 interface UnlanedConfig { title: string; note: string | null }
 interface WaitingConfig { labels: string[]; title: string; note: string | null }
 interface NoteConfig { addLabel: string | null; offerToClear: string[] }
+interface InboxConfig { labels: string[] }   // defaults to note.offerToClear when the config has no inbox block
 interface ThoughtsConfig { label: string; title: string; note: string | null }
 interface CaptureConfig { labels: string[] }
 interface DerivedConfig { allFlags: string[]; hotChips: string[] }
@@ -104,6 +119,7 @@ interface BoardConfig {
   subLabels: string[]
   waiting: WaitingConfig
   note: NoteConfig
+  inbox: InboxConfig
   thoughts: ThoughtsConfig | null
   flags: string[]
   capture: CaptureConfig
@@ -125,7 +141,7 @@ interface SessionInfo {
 | method | path | body | returns |
 |---|---|---|---|
 | GET | `/api/session` | | `SessionInfo` |
-| GET | `/api/issues` | | `{ issues: Issue[], fetchedAt: string }` all statuses, the UI filters |
+| GET | `/api/issues` | | `{ issues: Issue[], fetchedAt: string }` all statuses, the UI filters. Each issue carries `agent_reply`, null unless an agent commented after the human's latest comment; a bead the human never commented on has none |
 | GET | `/api/issue-ids` | | `{ ids: string[] }` all statuses; readable cross-origin from the T3 Code renderer and loopback pages, which link short ids in chat |
 | GET | `/api/issues/:id` | | `IssueDetail` |
 | GET | `/api/search?q=<words>&scope=all\|open\|closed&limit=<1-500>` | | `SearchResult`, the same ranking `beadside search` prints |
@@ -134,6 +150,8 @@ interface SessionInfo {
 | POST | `/api/issues/:id/status` | `{ status: Status, reason?: string, until?: string }` | `{ issue }` |
 | POST | `/api/issues/:id/priority` | `{ priority: number }` | `{ issue }` |
 | POST | `/api/issues/:id/labels` | `{ add?: string[], remove?: string[] }` | `{ issue }` |
+| POST | `/api/issues/:id/keep` | `{}` | `{ issue }`; a stale bead stays as it is and leaves the stale filter |
+| POST | `/api/issues/:id/due` | `{ due: string }` | `{ issue }`; `due` is anything bd's `--due` reads: `+1w`, `next monday`, `2026-10-20`, an ISO timestamp |
 | POST | `/api/issues` | `{ title: string, labels?: string[] }` | `{ issue }` quick capture via `bd q` |
 | DELETE | `/api/issues/:id` | | `{ deleted }`; only ids this server process created, otherwise 403. Undo for quick capture |
 
@@ -151,6 +169,8 @@ With the journal off, a bd without it, or a follower that keeps exiting, `state`
 - status: `closed` runs `bd close <id> --reason <reason|"closed from beadside">`; `deferred` runs `bd defer <id> [--until <until>]`; `open` from `closed` runs `bd reopen <id>`; `open` from `deferred` runs `bd undefer <id>`; anything else runs `bd update <id> --status <status>`.
 - priority: `bd update <id> --priority <n>`.
 - labels: one `bd update <id> --add-label a --remove-label b` call. Labels: 1 to 128 chars, no whitespace.
+- keep: `bd update <id> --set-metadata kept_at=<local YYYY-MM-DD>`. bd merges the key into the bead's metadata and moves `updated_at`, which is what takes the bead out of the stale filter; nothing else changes.
+- due: `bd update <id> --due=<due>`, the value validated against `^[A-Za-z0-9 +:._-]{1,64}$` (the same check `until` gets).
 - create: `bd q <title> -l <label>...`; defaults to `config.capture.labels` when none given.
 
 The server never accepts a raw argument list from the client. Every route maps to a fixed argument shape; ids are validated against `^[A-Za-z0-9_-]+(\.[0-9]+)?$` before use. Every `bd` call runs with `cwd` set to the repo path and `--no-color` where supported; output is parsed, never echoed to the client on success.

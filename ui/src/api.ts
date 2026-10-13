@@ -20,6 +20,25 @@ export interface Issue {
   comment_count: number
   dependency_count: number
   dependent_count: number
+  due_at?: string | null
+  defer_until?: string | null
+  metadata?: Record<string, unknown>
+  /** outgoing edges: this issue depends on depends_on_id, of a kind */
+  dependencies?: Dependency[]
+  /** list reads only: the newest agent comment after the human's latest note */
+  agent_reply?: AgentReply | null
+}
+
+export interface Dependency {
+  issue_id: string
+  depends_on_id: string
+  type: string
+}
+
+export interface AgentReply {
+  at: string
+  /** display name of the agent */
+  name: string
 }
 
 export type AuthorKind = 'human' | 'agent' | 'unknown'
@@ -113,6 +132,10 @@ export interface NoteConfig {
   offerToClear: string[]
 }
 
+export interface InboxConfig {
+  labels: string[]
+}
+
 export interface ThoughtsConfig {
   label: string
   title: string
@@ -138,6 +161,7 @@ export interface BoardConfig {
   subLabels: string[]
   waiting: WaitingConfig
   note: NoteConfig
+  inbox: InboxConfig
   thoughts: ThoughtsConfig | null
   flags: string[]
   capture: CaptureConfig
@@ -274,6 +298,16 @@ export function editLabels(
   change: { add?: string[]; remove?: string[] },
 ): Promise<{ issue: Issue }> {
   return post<{ issue: Issue }>(`/api/issues/${encodeURIComponent(id)}/labels`, change)
+}
+
+/** keeps a stale bead as it is: one metadata stamp moves it out of the stale filter */
+export function keepIssue(id: string): Promise<{ issue: Issue }> {
+  return post<{ issue: Issue }>(`/api/issues/${encodeURIComponent(id)}/keep`, {})
+}
+
+/** re-dates a due bead; bd reads +1w, next monday, a date or an ISO timestamp */
+export function setDue(id: string, due: string): Promise<{ issue: Issue }> {
+  return post<{ issue: Issue }>(`/api/issues/${encodeURIComponent(id)}/due`, { due })
 }
 
 /** quick capture; labels default to server capture config when omitted */

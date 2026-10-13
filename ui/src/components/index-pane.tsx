@@ -4,81 +4,16 @@ import { useEffect, useLayoutEffect, useRef } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import type { BoardConfig, Issue, SearchHit, SearchResult, SearchScope } from '../api'
 import type { Board, BoardRow } from '../model'
-import { axisOf, shortId, subsOf } from '../model'
-import { axisStyle, formatTime, laneColor, laneGlyph } from '../format'
+import { axisOf } from '../model'
+import type { Inbox } from '../inbox'
+import { axisStyle, formatTime, laneColor } from '../format'
 import type { Theme } from '../use-theme'
 import { SearchResults } from './search-results'
+import { InboxList, StaleList, type RowActions } from './inbox-list'
+import { Row } from './row'
 
-interface RowProps {
-  row: BoardRow
-  axis: string | null
-  repoName: string
-  config: BoardConfig
-  selected: boolean
-  showWaitDot: boolean
-  onSelect: (id: string) => void
-}
-
-function chipsFor(issue: Issue, config: BoardConfig): { text: string; hot: boolean }[] {
-  const out: { text: string; hot: boolean }[] = []
-  if (issue.status === 'in_progress') out.push({ text: 'in progress', hot: false })
-  if (issue.status === 'deferred') out.push({ text: 'deferred', hot: false })
-  if (issue.status === 'closed') out.push({ text: 'closed', hot: false })
-  for (const flag of config.derived.allFlags) {
-    if (config.thoughts && flag === config.thoughts.label) continue
-    if (!issue.labels.includes(flag)) continue
-    out.push({ text: flag, hot: config.derived.hotChips.includes(flag) })
-  }
-  for (const sub of subsOf(issue, config.subLabels)) out.push({ text: sub, hot: false })
-  return out
-}
-
-function Row({
-  row,
-  axis,
-  repoName,
-  config,
-  selected,
-  showWaitDot,
-  onSelect,
-}: RowProps) {
-  const { issue } = row
-  const dim = issue.status === 'deferred' || issue.status === 'closed'
-  const unread = config.note.addLabel ? issue.labels.includes(config.note.addLabel) : false
-  const cls = [
-    'row',
-    row.child ? 'child' : '',
-    selected ? 'sel' : '',
-    unread ? 'unread' : '',
-    dim ? 'dim' : '',
-    issue.status === 'closed' ? 'struck' : '',
-  ]
-    .filter(Boolean)
-    .join(' ')
-  return (
-    <button
-      className={cls}
-      data-id={issue.id}
-      style={axisStyle(axis, config) as CSSProperties}
-      onClick={() => onSelect(issue.id)}
-    >
-      <span className="mono mark" aria-hidden="true">
-        {laneGlyph(axis, config)}
-      </span>
-      <span className="mono rid">{shortId(issue.id, repoName)}</span>
-      <span className="rt">{issue.title}</span>
-      <span className="chips">
-        {showWaitDot && row.waiting ? <span className="waitdot" title="waiting on you" /> : null}
-        {chipsFor(issue, config).map((chip) => (
-          <span key={chip.text} className={chip.hot ? 'chip hot' : 'chip'}>
-            {chip.text}
-          </span>
-        ))}
-      </span>
-      <span className="mono rp">p{issue.priority}</span>
-    </button>
-  )
-}
+/** the inbox lands first; the board is the lanes, stale the board filtered to old open work */
+export type View = 'inbox' | 'board' | 'stale'
 
 interface IndexPaneProps {
   board: Board
@@ -95,6 +30,12 @@ interface IndexPaneProps {
   search: SearchProps
   theme: Theme
   onToggleTheme: () => void
+  view: View
+  onView: (view: View) => void
+  inbox: Inbox
+  stale: Issue[]
+  now: Date
+  actions: RowActions
 }
 
 export interface SearchProps {
@@ -139,7 +80,14 @@ export function IndexPane(props: IndexPaneProps) {
     search,
     theme,
     onToggleTheme,
+    view,
+    onView,
+    inbox,
+    stale,
+    now,
+    actions,
   } = props
+  const listProps = { ...actions, repoName, config, selected, now, onSelect }
   const listRef = useRef<HTMLDivElement>(null)
   const searching = search.value.trim().length > 0
   const boardScroll = useRef(0)
@@ -208,6 +156,28 @@ export function IndexPane(props: IndexPaneProps) {
             </>
           ) : null}
         </div>
+      </div>
+
+      <div className="views" role="tablist" aria-label="view">
+        {(
+          [
+            ['inbox', 'inbox', inbox.count, 'i'],
+            ['board', 'board', null, 'b'],
+            ['stale', 'stale', stale.length, 'o'],
+          ] as const
+        ).map(([key, label, n, kbd]) => (
+          <button
+            key={key}
+            role="tab"
+            aria-selected={view === key}
+            className={view === key ? 'on' : ''}
+            onClick={() => onView(key)}
+            title={kbd}
+          >
+            {label}
+            {n !== null ? <span className={key === 'inbox' && n ? 'n hot' : 'n'}>{n}</span> : null}
+          </button>
+        ))}
       </div>
 
       <div className="search">
@@ -287,7 +257,11 @@ export function IndexPane(props: IndexPaneProps) {
             onPick={search.onPick}
           />
         ) : null}
-        {searching ? null : board.sections.map((section) => {
+        {!searching && view === 'inbox' ? (
+          <InboxList {...listProps} inbox={inbox} onBoard={() => onView('board')} />
+        ) : null}
+        {!searching && view === 'stale' ? <StaleList {...listProps} stale={stale} /> : null}
+        {searching || view !== 'board' ? null : board.sections.map((section) => {
           const color = laneColor(section.axis, config)
           return (
             <div className={section.folded ? 'sec folded' : 'sec'} key={section.key}>
@@ -379,6 +353,11 @@ export function IndexPane(props: IndexPaneProps) {
         <span>
           <kbd>h</kbd>
           <kbd>l</kbd> fold
+        </span>
+        <span>
+          <kbd>i</kbd>
+          <kbd>b</kbd>
+          <kbd>o</kbd> inbox, board, stale
         </span>
         <span>
           <kbd>s</kbd> search

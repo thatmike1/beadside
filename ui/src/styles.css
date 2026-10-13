@@ -190,6 +190,38 @@ textarea {
 .counts .hot em {
   color: var(--signal);
 }
+/* ---------- views: inbox, board, stale ---------- */
+.views {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 18px;
+  padding: 8px var(--pad-index) 0;
+  font-size: 13.5px;
+}
+.views button {
+  padding: 2px 0 5px;
+  color: var(--ink-3);
+  border-bottom: 2px solid transparent;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.views button:hover {
+  color: var(--ink-2);
+}
+.views button.on {
+  color: var(--ink);
+  font-weight: 560;
+  border-bottom-color: var(--ink);
+}
+.views .n {
+  margin-left: 5px;
+  font-size: 12px;
+  font-weight: 435;
+  color: var(--ink-3);
+}
+.views .n.hot {
+  color: var(--signal);
+  font-weight: 600;
+}
 /* ---------- search ---------- */
 .search {
   flex: 0 0 auto;
@@ -569,6 +601,107 @@ textarea {
   border-radius: 50%;
   background: var(--signal);
   flex: 0 0 auto;
+}
+
+/* ---------- inbox and stale rows: the board row, then why it is here and its verdicts ---------- */
+.irow {
+  padding-bottom: 5px;
+}
+.irow.sel {
+  background: var(--fill-row);
+}
+.irow .row.sel {
+  background: none;
+}
+.irow:hover {
+  background: rgb(var(--tint) / 0.035);
+}
+.irow.sel:hover {
+  background: var(--fill-row);
+}
+.irow .row:hover {
+  background: none;
+}
+.iact {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  /* lines up under the title: glyph, gap, id gutter, gap */
+  padding: 0 var(--pad-index) 0 calc(var(--pad-index) + 10px + var(--gut-id) + 18px);
+  margin-top: -3px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.iact .why.hot {
+  color: var(--signal-ink);
+  font-weight: 560;
+}
+.acts {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  /* verdicts line up at the right edge, under the priority column */
+  margin-left: auto;
+}
+.acts button {
+  padding: 0 8px;
+  line-height: 20px;
+  border-radius: 3px;
+  background: var(--fill);
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.acts button:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+.acts input[type='date'] {
+  background: var(--fill);
+  border: 0;
+  border-radius: 3px;
+  padding: 0 6px;
+  height: 20px;
+  font-size: 12px;
+  color: var(--ink-2);
+  outline: 0;
+}
+.acts input[type='date']:focus {
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.cleared {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 44px var(--pad-index) 0;
+  max-width: 46ch;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.cleared b {
+  font-size: 21px;
+  font-weight: 620;
+  letter-spacing: -0.014em;
+  color: var(--ink);
+}
+.cleared button {
+  margin-top: 6px;
+  padding: 3px 10px;
+  border-radius: 3px;
+  background: var(--fill);
+  color: var(--ink-2);
+  font-size: 13px;
+}
+.cleared button:hover {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+.cleared kbd {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  margin-left: 4px;
+  color: var(--ink-3);
 }
 
 .hint {
@@ -987,6 +1120,54 @@ h2.sub {
   border-color: var(--signal);
   color: var(--signal-ink);
 }
+.links {
+  margin-top: 8px;
+  max-width: 78ch;
+}
+.lgroup {
+  display: grid;
+  grid-template-columns: 116px 1fr;
+  gap: 0 12px;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--rule-soft);
+}
+.lkind {
+  color: var(--ink-3);
+  font-size: 13px;
+  line-height: 28px;
+}
+.lrow {
+  display: grid;
+  grid-template-columns: var(--gut-id) 1fr auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  min-height: 28px;
+  padding: 0 8px;
+  margin-left: -8px;
+  border-radius: 3px;
+  color: var(--ink-2);
+  font-size: 14.25px;
+}
+.lrow:hover {
+  background: var(--fill-row);
+  color: var(--ink);
+}
+.lrow .lid {
+  color: var(--axis);
+  font-weight: 500;
+}
+.lrow .lt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lrow.struck .lt {
+  text-decoration: line-through;
+  text-decoration-color: var(--ink-3);
+  opacity: 0.7;
+}
 .memrow {
   padding: 9px 0;
   font-size: 14.25px;
@@ -1321,6 +1502,19 @@ h2.sub {
   }
   h1 {
     font-size: 21px;
+  }
+  .lgroup {
+    grid-template-columns: 1fr;
+  }
+  .iact {
+    padding-left: calc(var(--pad-index) + 18px);
+  }
+  .acts button,
+  .acts input[type='date'] {
+    font-size: 13.5px;
+    line-height: 28px;
+    height: auto;
+    padding: 0 11px;
   }
   .srow {
     grid-template-columns: 50px 1fr auto;
