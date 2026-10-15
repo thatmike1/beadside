@@ -9,10 +9,12 @@ export const STALE_DAYS = 30
 export const DUE_WITHIN_DAYS = 7
 /** stale beads the inbox asks a verdict on each day */
 export const STALE_PER_DAY = 3
+/** a closed bead's answer older than this many days stays out of the inbox, read or not */
+export const CLOSED_ANSWER_DAYS = 14
 
 const DAY_MS = 86_400_000
 
-export type InboxKind = 'reply' | 'label' | 'due' | 'stale'
+export type InboxKind = 'reply' | 'closed' | 'label' | 'due' | 'stale'
 
 export interface InboxSection {
   key: InboxKind
@@ -40,7 +42,7 @@ export type { StalePicks }
 export interface InboxOptions {
   config: BoardConfig
   now: Date
-  /** per bead, the `agent_reply.at` it was last opened at */
+  /** per bead, the answer's `at` it was last opened at */
   seen: Record<string, string>
   /** today's stale picks */
   picks: string[]
@@ -101,12 +103,38 @@ export function dueState(issue: Issue, now: Date): 'overdue' | 'soon' | null {
   return due < startOfDay(now) + DUE_WITHIN_DAYS * DAY_MS ? 'soon' : null
 }
 
-/** an agent reply after the human's latest note that the human has not opened since */
+/** what answered the human's latest note; `name` is null when the bead closed with no agent comment after it */
+export interface Answer {
+  at: string
+  name: string | null
+}
+
+/**
+ * the answer to the human's latest note. on open work it is the agent reply. a closed bead has
+ * one only when the human commented on it and an agent replied or the bead closed after that
+ * note; `at` is the later of the two, so a reply followed by the close is one answer, read once
+ */
+export function answerOf(issue: Issue): Answer | null {
+  const reply = issue.agent_reply ?? null
+  if (issue.status !== 'closed') return reply
+  const note = time(issue.note_at)
+  if (Number.isNaN(note)) return null
+  const closedAt = issue.closed_at && time(issue.closed_at) > note ? issue.closed_at : null
+  if (!closedAt) return reply
+  return { at: reply && time(reply.at) > time(closedAt) ? reply.at : closedAt, name: reply?.name ?? null }
+}
+
+/** an answer to the human's latest note that the human has not opened since */
 export function hasUnseenReply(issue: Issue, seen: Record<string, string>): boolean {
-  const reply = issue.agent_reply
-  if (!reply || issue.status === 'closed') return false
+  const answer = answerOf(issue)
+  if (!answer) return false
   const at = seen[issue.id]
-  return !at || time(at) < time(reply.at)
+  return !at || time(at) < time(answer.at)
+}
+
+/** the sections whose rows clear by being opened, and stay listed as read until a rebuild */
+export function isAnswerSection(kind: InboxKind): boolean {
+  return kind === 'reply' || kind === 'closed'
 }
 
 /** fnv-1a, enough to shuffle ids by day without a dependency */
@@ -140,9 +168,9 @@ export function dailyPicks(
 }
 
 /**
- * the inbox: agent replies the human has not opened, beads carrying an inbox label, beads
- * overdue or due within the week, and today's stale picks. a bead can sit in more than one
- * section; keyboard movement visits it once.
+ * the inbox: agent replies the human has not opened, closed beads that answered the human's
+ * note, beads carrying an inbox label, beads overdue or due within the week, and today's stale
+ * picks. a bead can sit in more than one section; keyboard movement visits it once.
  */
 export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
   const { config, now, seen, holding } = opts
@@ -150,15 +178,26 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
   const touchedFirst = (a: Issue, b: Issue) => b.updated_at.localeCompare(a.updated_at)
   const byId = new Map(issues.map((i) => [i.id, i]))
 
-  const unread = live
-    .filter((i) => hasUnseenReply(i, seen) || (i.id === holding && i.agent_reply))
-    .sort((a, b) => (b.agent_reply?.at ?? '').localeCompare(a.agent_reply?.at ?? ''))
-  // a read bead that got a newer reply since is unread again, back in the list above
+  // open replies and closed answers read the same way: unread first, newest answer on top, then
+  // the ones read this visit. a closed answer older than CLOSED_ANSWER_DAYS is history, not news
+  const answered = (i: Issue) => {
+    const answer = answerOf(i)
+    if (!answer) return null
+    if (i.status === 'closed' && now.getTime() - time(answer.at) > CLOSED_ANSWER_DAYS * DAY_MS) return null
+    return answer
+  }
+  const answerAt = (i: Issue) => answerOf(i)?.at ?? ''
+  const unread = issues
+    .filter((i) => answered(i) && (hasUnseenReply(i, seen) || i.id === holding))
+    .sort((a, b) => answerAt(b).localeCompare(answerAt(a)))
+  // a read bead that got a newer answer since is unread again, back in the list above
   const readRows = [...new Set(opts.read)]
     .filter((id) => id !== holding)
     .map((id) => byId.get(id))
-    .filter((i): i is Issue => !!i && i.status !== 'closed' && !!i.agent_reply && !hasUnseenReply(i, seen))
-  const replies = [...unread, ...readRows]
+    .filter((i): i is Issue => !!i && !!answered(i) && !hasUnseenReply(i, seen))
+  const answers = [...unread, ...readRows]
+  const replies = answers.filter((i) => i.status !== 'closed')
+  const closedAnswers = answers.filter((i) => i.status === 'closed')
   const read = new Set(readRows.map((i) => i.id))
   if (holding && unread.some((i) => i.id === holding) && !hasUnseenReply(byId.get(holding)!, seen)) read.add(holding)
 
@@ -185,6 +224,7 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
     if (rows.length) sections.push({ key, title, note, rows })
   }
   push('reply', 'replies', 'an agent answered your note', replies)
+  push('closed', 'answered, closed', 'your note got its answer and the bead closed', closedAnswers)
   push('label', labels.join(' / '), 'a call only you can make', asked)
   push('due', 'due', `overdue or due within ${DUE_WITHIN_DAYS} days`, due)
   push('stale', 'stale', `untouched ${STALE_DAYS}+ days, keep, snooze or close`, picked)
@@ -194,7 +234,7 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
   const counted = new Set<string>()
   for (const section of sections) {
     for (const issue of section.rows) {
-      if (!(section.key === 'reply' && read.has(issue.id))) counted.add(issue.id)
+      if (!(isAnswerSection(section.key) && read.has(issue.id))) counted.add(issue.id)
       if (placed.has(issue.id)) continue
       placed.add(issue.id)
       order.push(issue.id)

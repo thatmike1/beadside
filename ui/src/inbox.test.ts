@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardConfig, Issue } from './api'
-import { buildInbox, dailyPicks, dueState, isStale, localDay, staleBeads } from './inbox'
+import { answerOf, buildInbox, dailyPicks, dueState, isStale, localDay, staleBeads } from './inbox'
 import type { InboxOptions } from './inbox'
 import { linksOf } from './model'
 
@@ -136,6 +136,70 @@ describe('inbox', () => {
       const labelled = replies.map((r) => (r.id === 'repo-a' ? { ...r, labels: ['infra', 'needs-human'] } : r))
       const inbox = buildInbox(labelled, { ...OPTS, seen: seenFor('a', 'b', 'c', 'd'), read: ['repo-a'] })
       expect(inbox.count).toBe(1)
+    })
+  })
+
+  describe('closed beads that answered a note', () => {
+    // the 13 Oct pass: Mike noted, an agent replied and closed in the same minute
+    const zkcf = bead('zkcf', {
+      status: 'closed',
+      note_at: '2026-10-13T15:23:35Z',
+      agent_reply: { at: '2026-10-14T06:30:59Z', name: 'Claude' },
+      closed_at: '2026-10-14T06:31:00Z',
+      close_reason: 'replies sent; mobile/PWA ask lives in nexiflow-ypn',
+    })
+    // the reply came after the close
+    const b4ci = bead('b4ci', {
+      status: 'closed',
+      note_at: '2026-10-13T15:56:49Z',
+      agent_reply: { at: '2026-10-13T16:03:51Z', name: 'Claude' },
+      closed_at: '2026-10-13T16:01:00Z',
+    })
+    // closed after the note with no agent comment after it
+    const quiet = bead('quiet', { status: 'closed', note_at: daysAgo(3), closed_at: daysAgo(2), close_reason: 'done' })
+    const at = new Date(2026, 9, 15, 18, 0)
+    const closedRows = (inbox: ReturnType<typeof buildInbox>) => ids(inbox.sections.find((s) => s.key === 'closed')?.rows ?? [])
+
+    it('lists them in their own section after replies, newest answer first', () => {
+      const open = bead('open', { agent_reply: { at: daysAgo(0), name: 'Codex' } })
+      const inbox = buildInbox([zkcf, b4ci, quiet, open], { ...OPTS, now: at })
+      expect(inbox.sections.map((s) => s.key)).toEqual(['reply', 'closed'])
+      expect(closedRows(inbox)).toEqual(['repo-zkcf', 'repo-b4ci', 'repo-quiet'])
+      expect(inbox.sections[1]?.title).toBe('answered, closed')
+      expect(inbox.count).toBe(4)
+    })
+
+    it('takes the later of reply and close as the answer, unnamed when no agent spoke', () => {
+      expect(answerOf(zkcf)).toEqual({ at: '2026-10-14T06:31:00Z', name: 'Claude' })
+      expect(answerOf(b4ci)).toEqual({ at: '2026-10-13T16:03:51Z', name: 'Claude' })
+      expect(answerOf(quiet)).toEqual({ at: daysAgo(2), name: null })
+    })
+
+    it('leaves out a closed bead the human never noted on, or that closed before the note with no reply', () => {
+      const noNote = bead('nonote', { status: 'closed', closed_at: daysAgo(1), agent_reply: { at: daysAgo(1), name: 'Claude' } })
+      const before = bead('before', { status: 'closed', note_at: daysAgo(1), closed_at: daysAgo(2) })
+      expect(buildInbox([noNote, before], OPTS).count).toBe(0)
+      // a note on an already closed bead that an agent then answers does come in
+      const reopened = { ...before, agent_reply: { at: daysAgo(0), name: 'Codex' } }
+      expect(buildInbox([reopened], OPTS).order).toEqual(['repo-before'])
+    })
+
+    it('clears like a reply: opened holds read, a rebuild drops it, a seen marker keeps it out', () => {
+      const seen = { 'repo-zkcf': '2026-10-14T06:31:00Z' }
+      const holding = buildInbox([zkcf, b4ci], { ...OPTS, now: at, seen, read: ['repo-zkcf'], holding: 'repo-zkcf' })
+      expect(closedRows(holding)).toEqual(['repo-zkcf', 'repo-b4ci'])
+      expect([...holding.read]).toEqual(['repo-zkcf'])
+      expect(holding.count).toBe(1)
+      const moved = buildInbox([zkcf, b4ci], { ...OPTS, now: at, seen, read: ['repo-zkcf'] })
+      expect(closedRows(moved)).toEqual(['repo-b4ci', 'repo-zkcf'])
+      expect(buildInbox([zkcf, b4ci], { ...OPTS, now: at, seen }).order).toEqual(['repo-b4ci'])
+      // a marker at the reply but before the close still owes the close
+      expect(buildInbox([zkcf], { ...OPTS, now: at, seen: { 'repo-zkcf': '2026-10-14T06:30:59Z' } }).count).toBe(1)
+    })
+
+    it('lets an answer older than two weeks stay history', () => {
+      const old = bead('old', { status: 'closed', note_at: daysAgo(20), closed_at: daysAgo(15), agent_reply: { at: daysAgo(15), name: 'Claude' } })
+      expect(buildInbox([old], OPTS).count).toBe(0)
     })
   })
 

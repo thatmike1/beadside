@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { agentReply, classifyAuthor, defaultHuman } from './authors'
+import { agentReply, classifyAuthor, defaultHuman, humanNoteAt } from './authors'
 
 const mike = { id: 'human:mike', name: 'Mike' }
 
@@ -55,5 +55,19 @@ describe('agentReply', () => {
   it('reads a legacy unknown author as neither a note nor a reply', () => {
     const comments = [c('human:mike', '2026-10-01T10:00:00Z'), c('michal.psencik', '2026-10-05T10:00:00Z')]
     expect(agentReply(comments, mike)).toBeNull()
+  })
+})
+
+describe('humanNoteAt', () => {
+  const c = (author: string, created_at: string) => ({ author, created_at })
+
+  it('is the human\'s latest comment, null when they never wrote', () => {
+    const comments = [
+      c('human:mike', '2026-10-03T10:00:00Z'),
+      c('human:mike', '2026-10-01T10:00:00Z'),
+      c('agent:claude', '2026-10-04T10:00:00Z'),
+    ]
+    expect(humanNoteAt(comments, mike)).toBe('2026-10-03T10:00:00Z')
+    expect(humanNoteAt([c('agent:claude', '2026-10-04T10:00:00Z')], mike)).toBeNull()
   })
 })

@@ -84,3 +84,12 @@ export function agentReply(
   }
   return mine && reply && reply.at > mine ? reply : null
 }
+
+/** created_at of the human's own latest comment, or null when they never commented */
+export function humanNoteAt(comments: readonly { author: string; created_at: string }[], human: HumanIdentity): string | null {
+  let mine: string | null = null
+  for (const comment of comments) {
+    if (classifyAuthor(comment.author, human).self && (!mine || comment.created_at > mine)) mine = comment.created_at
+  }
+  return mine
+}

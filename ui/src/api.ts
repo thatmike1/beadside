@@ -27,6 +27,8 @@ export interface Issue {
   dependencies?: Dependency[]
   /** list reads only: the newest agent comment after the human's latest note */
   agent_reply?: AgentReply | null
+  /** list reads only: created_at of the human's own latest comment */
+  note_at?: string | null
 }
 
 export interface Dependency {

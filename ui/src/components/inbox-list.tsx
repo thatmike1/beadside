@@ -3,7 +3,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { BoardConfig, Issue } from '../api'
 import type { Inbox, InboxKind } from '../inbox'
-import { daysUntouched, dueState } from '../inbox'
+import { answerOf, daysUntouched, dueState, isAnswerSection } from '../inbox'
 import { axisOf } from '../model'
 import { axisStyle, formatShortDate } from '../format'
 import { Row } from './row'
@@ -33,6 +33,16 @@ function dueText(issue: Issue, now: Date): string {
   if (state === 'overdue') return `overdue, was due ${when}`
   const due = new Date(issue.due_at ?? '')
   return due.toDateString() === now.toDateString() ? 'due today' : `due ${when}`
+}
+
+/** who answered, then that it closed and why: "Claude replied 14 Oct, closed: replies sent" */
+function closedText(issue: Issue): string {
+  const answer = answerOf(issue)
+  const reply = issue.agent_reply
+  const closed = `closed ${formatShortDate(issue.closed_at)}`
+  const head = answer?.name && reply ? `${reply.name} replied ${formatShortDate(reply.at)}, ${closed}` : closed
+  const reason = issue.close_reason?.trim()
+  return reason ? `${head}: ${reason}` : head
 }
 
 function untouchedText(issue: Issue, now: Date): string {
@@ -126,6 +136,9 @@ function rowFor(kind: InboxKind, issue: Issue, list: ListProps, read = false) {
     const why = reply ? `${reply.name} replied ${formatShortDate(reply.at)}` : ''
     return <ActionRow key={issue.id} issue={issue} why={why} read={read} list={list} />
   }
+  if (kind === 'closed') {
+    return <ActionRow key={issue.id} issue={issue} why={closedText(issue)} read={read} list={list} />
+  }
   if (kind === 'due') {
     return (
       <ActionRow
@@ -175,7 +188,7 @@ export function InboxList(props: ListProps & { inbox: Inbox; onBoard: () => void
         <div className="sec" key={section.key}>
           <div className={section.key === 'label' || section.key === 'due' ? 'sechead hot' : 'sechead'}>
             <span>{section.title}</span>
-            <span className="n">{section.rows.filter((i) => !(section.key === 'reply' && inbox.read.has(i.id))).length}</span>
+            <span className="n">{section.rows.filter((i) => !(isAnswerSection(section.key) && inbox.read.has(i.id))).length}</span>
             <span className="note">{section.note}</span>
           </div>
           <div className="secrule" />

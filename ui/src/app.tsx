@@ -5,7 +5,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import * as api from './api'
 import type { BoardConfig, Comment, Issue, IssueDetail, IssueList, SearchHit, SearchScope, Status } from './api'
 import { buildBoard, linksOf, sectionsHolding, shortId, step } from './model'
-import { buildInbox, hasUnseenReply, localDay, staleBeads } from './inbox'
+import { answerOf, buildInbox, hasUnseenReply, localDay, staleBeads } from './inbox'
 import { IndexPane, type View } from './components/index-pane'
 import { SNOOZE_UNTIL } from './components/inbox-list'
 import { DetailPane, type RevealTarget } from './components/detail-pane'
@@ -238,13 +238,14 @@ export function App() {
     if (next) select(next, false)
   }, [selected, issues, nav.order, view, repoName, select, reveal])
 
-  // opening a bead marks its agent reply seen. the row holds its place while open, then drops to
+  // opening a bead marks its answer seen, an agent reply or a close after the human's note. the row holds its place while open, then drops to
   // the bottom of replies, marked read, until the list is rebuilt
   const openIssue = selected && selected === opened ? board.byId.get(selected) : undefined
   useEffect(() => {
-    if (!memory.ready || !openIssue?.agent_reply || !hasUnseenReply(openIssue, seen)) return
+    const answer = openIssue ? answerOf(openIssue) : null
+    if (!memory.ready || !openIssue || !answer || !hasUnseenReply(openIssue, seen)) return
     const id = openIssue.id
-    markSeen(id, openIssue.agent_reply.at)
+    markSeen(id, answer.at)
     setHolding(id)
     setVisitRead((prev) => [...prev.filter((other) => other !== id), id])
   }, [memory.ready, openIssue, seen, markSeen])
@@ -281,10 +282,12 @@ export function App() {
         prev
           ? {
               ...prev,
-              // a write reads the issue back from bd show, which has no agent_reply: keep the
-              // list's until the refetch
+              // a write reads the issue back from bd show, which has no agent_reply or note_at:
+              // keep the list's until the refetch
               issues: prev.issues.map((i) =>
-                i.id === next.id ? { ...next, agent_reply: next.agent_reply ?? i.agent_reply ?? null } : i,
+                i.id === next.id
+                  ? { ...next, agent_reply: next.agent_reply ?? i.agent_reply ?? null, note_at: next.note_at ?? i.note_at ?? null }
+                  : i,
               ),
             }
           : prev,
@@ -311,6 +314,8 @@ export function App() {
       try {
         const { issue } = await spec.call()
         applyIssue(issue)
+        // a close from this board is the human's own, not an answer for the inbox to bring back
+        if (issue.status === 'closed' && issue.closed_at) markSeen(issue.id, issue.closed_at)
         toaster.show(spec.message, spec.undo ?? undefined)
       } catch (error: unknown) {
         toaster.fail(error instanceof Error ? error.message : 'write failed')
@@ -318,7 +323,7 @@ export function App() {
         refresh(id)
       }
     },
-    [applyIssue, refresh, toaster],
+    [applyIssue, refresh, toaster, markSeen],
   )
 
   // the polled list is the record of truth for status, labels and priority; the detail

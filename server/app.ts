@@ -7,7 +7,7 @@ import { Hono } from 'hono'
 import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
-import { agentReply, classifyAuthor, defaultHuman, type HumanIdentity } from './authors'
+import { agentReply, classifyAuthor, humanNoteAt, defaultHuman, type HumanIdentity } from './authors'
 import { BdError, type BeadsClient, type Issue, type IssueWithComments, type Status } from './bd'
 import { resolveConfig, type ResolvedBoardConfig } from './config'
 import {
@@ -241,11 +241,12 @@ export function createBoard(config: AppConfig): Board {
   )
 
   // each issue carries `agent_reply`: the newest agent comment after the human's latest note,
-  // which the export has and the issue record does not
+  // and `note_at`, that note's time, which the export has and the issue record does not
   app.get('/api/issues', async (c) => {
     const issues = (await loadCorpus(listAge())).map(({ issue, comments }) => ({
       ...issue,
       agent_reply: agentReply(comments, human),
+      note_at: humanNoteAt(comments, human),
     }))
     return c.json({ issues, fetchedAt: new Date().toISOString() })
   })

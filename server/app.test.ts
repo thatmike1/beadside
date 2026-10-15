@@ -129,6 +129,7 @@ describe('reads', () => {
     expect(body.issues[0]).not.toHaveProperty('_type')
     // no comments in the canned export, so nothing replied to the human
     expect(body.issues[0]?.['agent_reply']).toBeNull()
+    expect(body.issues[0]?.['note_at']).toBeNull()
     expect(Number.isNaN(Date.parse(body.fetchedAt))).toBe(false)
   })
 

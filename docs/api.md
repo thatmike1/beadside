@@ -35,6 +35,7 @@ interface Issue {            // one record of `bd export` (JSONL, `_type === 'is
   due_at?: string | null
   dependencies?: Dependency[]  // outgoing edges; `bd show`'s shape is rewritten to this one on the way out
   agent_reply?: AgentReply | null   // GET /api/issues only, see below
+  note_at?: string | null          // GET /api/issues only: created_at of the human's own latest comment
 }
 
 interface Dependency {       // issue_id depends on depends_on_id, as `bd export` writes it
@@ -130,7 +131,7 @@ interface StalePicks { day: string; ids: string[] }
 
 interface InboxState {
   device: string                   // the name this board's kv keys carry, from the hostname
-  seen: Record<string, string>     // bead id -> the newest agent_reply.at any device opened it at
+  seen: Record<string, string>     // bead id -> the newest answer time any device opened it at
   picks: StalePicks | null         // the day's picks of the device that drew first; null when none has
 }
 
@@ -149,7 +150,7 @@ interface SessionInfo {
 | method | path | body | returns |
 |---|---|---|---|
 | GET | `/api/session` | | `SessionInfo` |
-| GET | `/api/issues` | | `{ issues: Issue[], fetchedAt: string }` all statuses, the UI filters. Each issue carries `agent_reply`, null unless an agent commented after the human's latest comment; a bead the human never commented on has none |
+| GET | `/api/issues` | | `{ issues: Issue[], fetchedAt: string }` all statuses, the UI filters. Each issue carries `agent_reply`, null unless an agent commented after the human's latest comment; a bead the human never commented on has none. `note_at` is that latest comment's time, null when there is none; the inbox reads a close after it as an answer too |
 | GET | `/api/issue-ids` | | `{ ids: string[] }` all statuses; readable cross-origin from the T3 Code renderer and loopback pages, which link short ids in chat |
 | GET | `/api/issues/:id` | | `IssueDetail` |
 | GET | `/api/inbox-state?day=<YYYY-MM-DD>` | | `InboxState`: the seen markers merged over every device and the day's stale picks. See Inbox state |
@@ -161,7 +162,7 @@ interface SessionInfo {
 | POST | `/api/issues/:id/labels` | `{ add?: string[], remove?: string[] }` | `{ issue }` |
 | POST | `/api/issues/:id/keep` | `{}` | `{ issue }`; a stale bead stays as it is and leaves the stale filter |
 | POST | `/api/issues/:id/due` | `{ due: string }` | `{ issue }`; `due` is anything bd's `--due` reads: `+1w`, `next monday`, `2026-10-20`, an ISO timestamp |
-| POST | `/api/issues/:id/seen` | `{ at: string }` | `{ id, at }`; marks the bead's agent reply seen. `at` is the reply's own `agent_reply.at`, an ISO timestamp |
+| POST | `/api/issues/:id/seen` | `{ at: string }` | `{ id, at }`; marks the bead's answer seen. `at` is the answer's own time, an ISO timestamp: `agent_reply.at`, or on a closed bead the later of that and `closed_at` |
 | POST | `/api/stale-picks` | `{ day: string, ids: string[] }` | `InboxState`; stores this device's picks for `day` (at most 10 ids) and answers with the picks that hold, another device's when it drew first |
 | POST | `/api/issues` | `{ title: string, labels?: string[] }` | `{ issue }` quick capture via `bd q` |
 | DELETE | `/api/issues/:id` | | `{ deleted }`; only ids this server process created, otherwise 403. Undo for quick capture |
@@ -190,7 +191,7 @@ The server never accepts a raw argument list from the client. Every route maps t
 
 What the inbox remembers lives in bd's key-value store (`bd kv`), which sits in the Dolt database, so it travels with `bd sync` between clones and never writes to a bead (a bead write would move `updated_at` and break the stale filter). Each board writes only keys that carry its own device name, the hostname lowercased to `[a-z0-9-]`:
 
-- `beadside.seen.<device>.<bead id>` = the `agent_reply.at` the bead was opened at
+- `beadside.seen.<device>.<bead id>` = the answer time the bead was opened at (`agent_reply.at`, or on a closed bead the later of that and `closed_at`)
 - `beadside.picks.<device>` = `{"day":"2026-10-13","ids":[...],"at":"<ISO time of the draw>"}`
 
 Two clones that set the same key to different values between syncs make `bd sync` halt with a merge conflict that needs a hand to resolve; keys per device never collide. Reading merges them: a bead is seen at the newest marker any device wrote, and a day's picks are the ones with the earliest `at` for that day, so every board settles on the same three once the syncs meet. A board draws and stores picks only when no device has any for the day yet.
