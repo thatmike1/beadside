@@ -291,4 +291,5 @@ npm run typecheck        # tsc type checks across server and ui
 - `s`: focus search; in the box `Up` / `Down` step through hits, `Enter` opens the hit and returns the keys to the list, `Esc` clears and puts the board back where it was
 - `/`: focus quick capture
 - `t`: switch between light and dark; the board starts in whichever your system prefers and remembers the switch
+- `f`: switch the body font between Figtree and Ubuntu; the choice is remembered per browser (`beadside:font`), and labels and code stay in JetBrains Mono
 - `?`: show or hide this list; the `?` button at the top of the index opens it too

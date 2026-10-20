@@ -39,6 +39,20 @@
   --gut-id: 52px;
   --pad-index: clamp(18px, 2.2vw, 30px);
   --pad-read: clamp(26px, 3vw, 54px);
+  /* the body font; set on <html data-font> by the boot script in index.html. local Ubuntu first for machines that have it */
+  --font-body: Figtree, system-ui, sans-serif;
+  --font-body-weight: 435;
+  --font-body-size: 15.25px;
+  --font-body-leading: 1.65;
+  --font-body-tracking: -0.002em;
+}
+
+:root[data-font='ubuntu'] {
+  --font-body: Ubuntu, 'Ubuntu Sans', system-ui, sans-serif;
+  --font-body-weight: 400;
+  --font-body-size: 15px;
+  --font-body-leading: 1.6;
+  --font-body-tracking: 0;
 }
 
 /* ---------- dark: the same warm paper, lights off. set on <html> by the boot script in index.html ---------- */
@@ -87,11 +101,11 @@ body {
   margin: 0;
   background: var(--bg-read);
   color: var(--ink);
-  font-family: Figtree, system-ui, sans-serif;
-  font-weight: 435;
-  font-size: 15.25px;
-  letter-spacing: -0.002em;
-  line-height: 1.65;
+  font-family: var(--font-body);
+  font-weight: var(--font-body-weight);
+  font-size: var(--font-body-size);
+  letter-spacing: var(--font-body-tracking);
+  line-height: var(--font-body-leading);
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
 }
@@ -169,7 +183,8 @@ textarea {
   border-radius: 3px;
   color: var(--ink-3);
 }
-.brand .stale + .theme {
+.brand .stale + .theme,
+.brand .theme + .fontpick {
   margin-left: 0;
 }
 .brand .theme:hover {

@@ -7,6 +7,7 @@ import type { Board, BoardRow } from '../model'
 import { axisOf } from '../model'
 import type { Inbox } from '../inbox'
 import { axisStyle, formatTime, laneColor } from '../format'
+import type { BodyFont } from '../use-font'
 import type { Theme } from '../use-theme'
 import { SearchResults } from './search-results'
 import { InboxList, StaleList, type RowActions } from './inbox-list'
@@ -30,6 +31,8 @@ interface IndexPaneProps {
   search: SearchProps
   theme: Theme
   onToggleTheme: () => void
+  font: BodyFont
+  onToggleFont: () => void
   /** the key list behind the `?` button */
   help: boolean
   onHelp: (open: boolean) => void
@@ -83,6 +86,8 @@ export function IndexPane(props: IndexPaneProps) {
     search,
     theme,
     onToggleTheme,
+    font,
+    onToggleFont,
     help,
     onHelp,
     view,
@@ -138,6 +143,14 @@ export function IndexPane(props: IndexPaneProps) {
             title="t"
           >
             {theme === 'dark' ? 'light' : 'dark'}
+          </button>
+          <button
+            className="theme fontpick"
+            onClick={onToggleFont}
+            aria-label={`switch body font to ${font === 'ubuntu' ? 'figtree' : 'ubuntu'}`}
+            title="f"
+          >
+            {font === 'ubuntu' ? 'figtree' : 'ubuntu'}
           </button>
           <KeyHelp open={help} onOpen={onHelp} />
         </div>
@@ -357,6 +370,7 @@ const KEYS: { keys: string[]; what: string }[] = [
   { keys: ['m'], what: 'close' },
   { keys: ['h', 'l'], what: 'fold, unfold' },
   { keys: ['t'], what: 'theme' },
+  { keys: ['f'], what: 'body font' },
   { keys: ['?'], what: 'this list' },
 ]
 

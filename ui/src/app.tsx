@@ -15,6 +15,7 @@ import { useFolds } from './use-folds'
 import { useLive } from './use-live'
 import { isReadingState, openReading, writeSelectionHash } from './navigation'
 import { useNarrow } from './use-narrow'
+import { useFont } from './use-font'
 import { useTheme } from './use-theme'
 import { useInboxMemory } from './use-inbox-memory'
 
@@ -77,6 +78,7 @@ export function App() {
   const searchRef = useRef<HTMLInputElement>(null)
   const narrow = useNarrow()
   const { theme, toggle: toggleTheme } = useTheme()
+  const { font, toggle: toggleFont } = useFont()
   // phone only: the open bead covers the list; its own history entry, so back returns to the list
   const [reading, setReading] = useState(() => isReadingState(window.history.state))
 
@@ -639,7 +641,7 @@ export function App() {
     if (hits.length) searchRef.current?.blur()
   }, [searchResult, selected, pickHit])
 
-  // keyboard: movement, folds, the note box, copy, defer and close, search, quick capture, theme
+  // keyboard: movement, folds, the note box, copy, defer and close, search, quick capture, theme, body font
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
@@ -711,11 +713,14 @@ export function App() {
       } else if (e.key === 't') {
         e.preventDefault()
         toggleTheme()
+      } else if (e.key === 'f') {
+        e.preventDefault()
+        toggleFont()
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [board, inbox, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme])
+  }, [board, inbox, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme, toggleFont])
 
   if (sessionQuery.isError || issuesQuery.isError) {
     const error = sessionQuery.error ?? issuesQuery.error
@@ -748,6 +753,8 @@ export function App() {
           fetchedAt={issuesQuery.data?.fetchedAt}
           theme={theme}
           onToggleTheme={toggleTheme}
+          font={font}
+          onToggleFont={toggleFont}
           help={help}
           onHelp={setHelp}
           view={view}
