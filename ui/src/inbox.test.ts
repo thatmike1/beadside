@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardConfig, Issue } from './api'
-import { answerOf, buildInbox, dailyPicks, dueState, isStale, localDay, staleBeads } from './inbox'
+import { answerOf, buildInbox, dailyPicks, dueState, inboxFoldKey, isStale, localDay, staleBeads } from './inbox'
 import type { InboxOptions } from './inbox'
-import { linksOf } from './model'
+import { linksOf, step } from './model'
 
 const CONFIG: BoardConfig = {
   human: { id: 'human:tester', name: 'Tester' },
@@ -307,5 +307,40 @@ describe('links', () => {
     const odd = [bead('a', { dependencies: [edge('a', 'b', 'waits-for')] })]
     expect(linksOf('repo-a', odd).map((g) => g.title)).toEqual(['waits-for'])
     expect(linksOf('repo-b', odd).map((g) => g.title)).toEqual(['waits-for (inbound)'])
+  })
+})
+
+describe('inbox folds', () => {
+  const issues = [
+    bead('r', { agent_reply: { at: daysAgo(1), name: 'Claude' } }),
+    bead('n', { labels: ['infra', 'needs-human'] }),
+    bead('d', { due_at: daysAgo(2) }),
+  ]
+  const folded = (keys: string[]) => (key: string, fallback: boolean) => (keys.includes(key) ? true : fallback)
+
+  it('opens every section when nothing is stored', () => {
+    const inbox = buildInbox(issues, OPTS)
+    expect(inbox.sections.map((s) => s.folded)).toEqual([false, false, false])
+    expect(inbox.order).toEqual(inbox.layout)
+  })
+
+  it('leaves a folded section out of keyboard order but keeps it laid out and counted', () => {
+    const inbox = buildInbox(issues, { ...OPTS, isFolded: folded([inboxFoldKey('label')]) })
+    expect(inbox.sections.find((s) => s.key === 'label')?.folded).toBe(true)
+    expect(inbox.order).toEqual(['repo-r', 'repo-d'])
+    expect(inbox.layout).toEqual(['repo-r', 'repo-n', 'repo-d'])
+    expect(inbox.count).toBe(3)
+  })
+
+  it('steps off a row folded away to the next one on screen', () => {
+    const inbox = buildInbox(issues, { ...OPTS, isFolded: folded([inboxFoldKey('label')]) })
+    expect(step(inbox, 'repo-n', 1)).toBe('repo-d')
+    expect(step(inbox, 'repo-n', -1)).toBe('repo-r')
+  })
+
+  it('keeps a bead listed twice on screen while one of its sections is open', () => {
+    const twice = [bead('both', { labels: ['infra', 'needs-human'], due_at: daysAgo(1) })]
+    const inbox = buildInbox(twice, { ...OPTS, isFolded: folded([inboxFoldKey('label')]) })
+    expect(inbox.order).toEqual(['repo-both'])
   })
 })

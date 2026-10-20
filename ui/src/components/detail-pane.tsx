@@ -3,8 +3,10 @@
 import { useEffect, useRef } from 'react'
 import type { CSSProperties, RefObject } from 'react'
 import type { BoardConfig, Comment, Issue, IssueDetail, SearchField, Status } from '../api'
-import { axisOf, flagsOf, projectOf, shortId, unreadNote, type LinkGroup } from '../model'
-import { axisStyle, formatDate, formatShortDate, statusLabel } from '../format'
+import { axisOf, flagsOf, orderComments, projectOf, shortId, unreadNote, type LinkGroup } from '../model'
+import { axisStyle, formatDate, formatDateTime, formatShortDate, statusLabel } from '../format'
+import type { Folds } from '../use-folds'
+import { useCommentOrder } from '../use-comment-order'
 import { MarkdownText } from './markdown'
 import { WriteRow } from './write-row'
 import { NoteBox } from './note-box'
@@ -44,7 +46,12 @@ interface DetailPaneProps {
   links: LinkGroup[]
   byId: Map<string, Issue>
   onOpenLink: (id: string) => void
+  /** the index's fold store; the description folds through it too */
+  folds: Folds
 }
+
+/** fold key of the description, beside the index sections in the same store */
+const DESCRIPTION_FOLD = 'detail:description'
 
 /** the comment header label: You for the board's human, the agent or human name, or a legacy marker */
 function CommentHead({ comment, human }: { comment: Comment; human: string }) {
@@ -71,13 +78,19 @@ function CommentHead({ comment, human }: { comment: Comment; human: string }) {
   )
 }
 
-function CommentRow({ comment, human, flash }: { comment: Comment; human: string; flash: boolean }) {
-  const cls = ['comment', comment.by.self ? 'mine' : '', comment.by.kind, flash ? 'flash' : '']
+function CommentRow(props: { comment: Comment; human: string; flash: boolean; unread: boolean }) {
+  const { comment, human, flash, unread } = props
+  const cls = ['comment', comment.by.self ? 'mine' : '', comment.by.kind, unread ? 'unread' : '', flash ? 'flash' : '']
   return (
     <div className={cls.filter(Boolean).join(' ')} id={`comment-${comment.id}`}>
       <div className="chead">
         <CommentHead comment={comment} human={human} />
-        <span>{formatDate(comment.created_at)}</span>
+        <span>{formatDateTime(comment.created_at)}</span>
+        {unread ? (
+          <span className="unreadtag" title="no agent has read this note yet">
+            unread
+          </span>
+        ) : null}
       </div>
       <MarkdownText text={comment.text} className="ctext" />
     </div>
@@ -86,11 +99,19 @@ function CommentRow({ comment, human, flash }: { comment: Comment; human: string
 
 /** detail of the selected bead; the list record paints the header before the join lands */
 export function DetailPane(props: DetailPaneProps) {
-  const { issue, detail, repoName, config, human, knownLabels, reveal } = props
+  const { issue, detail, repoName, config, human, knownLabels, reveal, folds } = props
+  const { order, toggle: toggleOrder } = useCommentOrder()
+  const descriptionFolded = folds.isFolded(DESCRIPTION_FOLD, false)
   const bodyRef = useRef<HTMLDivElement>(null)
   const readRef = useRef<HTMLElement>(null)
   const revealed = reveal && issue && reveal.id === issue.id ? reveal : null
   const detailReady = detail?.issue.id === issue?.id
+
+  // a search hit in a folded description opens it first
+  const { setFolded } = folds
+  useEffect(() => {
+    if (revealed?.field === 'description') setFolded(DESCRIPTION_FOLD, false)
+  }, [revealed, setFolded])
 
   // a search hit scrolls its field or comment into view once the detail has landed
   useEffect(() => {
@@ -132,8 +153,7 @@ export function DetailPane(props: DetailPaneProps) {
   const comments = detailReady ? (detail?.comments ?? []) : []
   const unread =
     config.note.addLabel && full.labels.includes(config.note.addLabel) ? unreadNote(comments) : undefined
-  // the unread note is shown on its own above, so it does not repeat in the list
-  const earlier = unread ? comments.filter((c) => c !== unread) : comments
+  const thread = orderComments(comments, order)
   const flashComment = revealed?.field === 'comment' ? revealed.commentId : null
 
   return (
@@ -214,24 +234,45 @@ export function DetailPane(props: DetailPaneProps) {
           </div>
 
           {unread ? (
-            <>
-              <h2 className="sub">
-                {unread.by.self ? 'your note, still unread' : 'unread note, written before authors were recorded'}
-              </h2>
-              <CommentRow comment={unread} human={human} flash={flashComment === unread.id} />
-            </>
+            <button
+              className="unreadjump"
+              onClick={() =>
+                bodyRef.current
+                  ?.querySelector(`#comment-${CSS.escape(unread.id)}`)
+                  ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+              }
+            >
+              {unread.by.self ? 'your note is still unread' : 'an unread note, written before authors were recorded'}
+              <span aria-hidden="true"> &#8595;</span>
+            </button>
           ) : null}
 
-          <h2 className="sub">description</h2>
-          <div
-            className={revealed?.field === 'description' ? 'prose flash' : 'prose'}
-            data-field="description"
-          >
-            {full.description ? (
-              <MarkdownText text={full.description} />
-            ) : (
-              <p className="empty">no description on this bead.</p>
-            )}
+          <div className={descriptionFolded ? 'dsec folded' : 'dsec'}>
+            <h2 className="sub">
+              <button
+                className="dfold"
+                aria-expanded={!descriptionFolded}
+                onClick={() => setFolded(DESCRIPTION_FOLD, !descriptionFolded)}
+              >
+                description
+                {descriptionFolded ? <span className="note">folded</span> : null}
+              </button>
+            </h2>
+            {/* always rendered so the fold can animate; inert while folded so nothing inside takes focus */}
+            <div className="secbody" inert={descriptionFolded}>
+              <div className="secbody-in">
+                <div
+                  className={revealed?.field === 'description' ? 'prose flash' : 'prose'}
+                  data-field="description"
+                >
+                  {full.description ? (
+                    <MarkdownText text={full.description} />
+                  ) : (
+                    <p className="empty">no description on this bead.</p>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
 
           {issue.notes ? (
@@ -276,13 +317,31 @@ export function DetailPane(props: DetailPaneProps) {
             </>
           ) : null}
 
-          <h2 className="sub">{unread ? 'other comments' : 'comments'}</h2>
-          {earlier.length ? (
-            earlier.map((c) => (
-              <CommentRow comment={c} human={human} flash={flashComment === c.id} key={c.id} />
+          <h2 className="sub chsub">
+            <span>comments</span>
+            {thread.length > 1 ? (
+              <button
+                className="corder"
+                onClick={toggleOrder}
+                aria-label={`${order} first, switch to ${order === 'oldest' ? 'newest' : 'oldest'} first`}
+                title={`switch to ${order === 'oldest' ? 'newest' : 'oldest'} first`}
+              >
+                {order} first <span aria-hidden="true">{order === 'oldest' ? '\u2193' : '\u2191'}</span>
+              </button>
+            ) : null}
+          </h2>
+          {thread.length ? (
+            thread.map((c) => (
+              <CommentRow
+                comment={c}
+                human={human}
+                flash={flashComment === c.id}
+                unread={c === unread}
+                key={c.id}
+              />
             ))
           ) : detailReady || full.comment_count === 0 ? (
-            <div className="empty">{unread ? 'nothing else.' : 'no comments yet.'}</div>
+            <div className="empty">no comments yet.</div>
           ) : (
             <div className="empty">reading comments…</div>
           )}

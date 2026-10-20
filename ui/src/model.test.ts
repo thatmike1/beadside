@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardConfig, Issue } from './api'
 import type { Comment } from './api'
-import { buildBoard, projectOf, sectionsHolding, step, subsOf, unreadNote } from './model'
+import { buildBoard, orderComments, projectOf, sectionsHolding, step, subsOf, unreadNote } from './model'
 import type { BoardOptions } from './model'
 
 const FULL_CONFIG = {
@@ -373,5 +373,35 @@ describe('unreadNote', () => {
   it('falls back to the newest unknown-author comment, never to an agent', () => {
     expect(unreadNote([comment('legacy', 'unknown'), comment('reply', 'agent')])?.id).toBe('legacy')
     expect(unreadNote([comment('reply', 'agent')])).toBeUndefined()
+  })
+})
+
+describe('orderComments', () => {
+  const at = (id: string, created_at: string): Comment => ({
+    id,
+    issue_id: 'x',
+    author: 'agent:claude',
+    text: id,
+    created_at,
+    by: { kind: 'agent', name: 'Claude', self: false },
+  })
+  const thread = [
+    at('b', '2026-10-16T17:35:00Z'),
+    at('a', '2026-10-16T09:00:00Z'),
+    at('tie-1', '2026-10-17T08:00:00Z'),
+    at('tie-2', '2026-10-17T08:00:00Z'),
+  ]
+
+  it('reads oldest first by time, ties in the order bd gave them', () => {
+    expect(orderComments(thread, 'oldest').map((c) => c.id)).toEqual(['a', 'b', 'tie-1', 'tie-2'])
+  })
+
+  it('reads newest first as the exact reverse', () => {
+    expect(orderComments(thread, 'newest').map((c) => c.id)).toEqual(['tie-2', 'tie-1', 'b', 'a'])
+  })
+
+  it('leaves the input alone', () => {
+    orderComments(thread, 'newest')
+    expect(thread.map((c) => c.id)).toEqual(['b', 'a', 'tie-1', 'tie-2'])
   })
 })

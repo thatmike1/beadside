@@ -12,6 +12,12 @@ export function formatDate(iso: string | null | undefined): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()] ?? ''} ${d.getFullYear()}`
 }
 
+/** 3 Sep 2026 17:35, local time, for comments where the hour matters */
+export function formatDateTime(iso: string | null | undefined): string {
+  const day = formatDate(iso)
+  return day ? `${day} ${formatTime(iso)}` : ''
+}
+
 /** 3 Sep, for tight columns */
 export function formatShortDate(iso: string | null | undefined): string {
   if (!iso) return ''
@@ -20,7 +26,7 @@ export function formatShortDate(iso: string | null | undefined): string {
   return `${d.getDate()} ${MONTHS[d.getMonth()] ?? ''}`
 }
 
-/** clock time on the day the list was fetched */
+/** 17:35, local 24h clock */
 export function formatTime(iso: string | null | undefined): string {
   if (!iso) return ''
   const d = new Date(iso)

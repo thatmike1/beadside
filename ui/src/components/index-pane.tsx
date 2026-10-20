@@ -269,7 +269,7 @@ export function IndexPane(props: IndexPaneProps) {
           />
         ) : null}
         {!searching && view === 'inbox' ? (
-          <InboxList {...listProps} inbox={inbox} onBoard={() => onView('board')} />
+          <InboxList {...listProps} inbox={inbox} onBoard={() => onView('board')} onToggleSection={onToggleSection} />
         ) : null}
         {!searching && view === 'stale' ? <StaleList {...listProps} stale={stale} /> : null}
         {searching || view !== 'board' ? null : board.sections.map((section) => {

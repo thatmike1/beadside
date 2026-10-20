@@ -21,14 +21,20 @@ export interface InboxSection {
   title: string
   note: string
   rows: Issue[]
+  folded: boolean
+}
+
+/** fold key of an inbox section, kept apart from the board's section keys in the same store */
+export function inboxFoldKey(kind: InboxKind): string {
+  return `inbox:${kind}`
 }
 
 export interface Inbox {
   /** only the sections that hold something, in render order */
   sections: InboxSection[]
-  /** every id in visual order, each once, for keyboard movement */
+  /** ids on screen in visual order, each once, for keyboard movement; folded sections left out */
   order: string[]
-  /** the same as order; the inbox never folds */
+  /** every id in visual order, folded sections included, so movement can step off a folded row */
   layout: string[]
   /** distinct beads in the inbox, replies read this visit left out */
   count: number
@@ -53,6 +59,8 @@ export interface InboxOptions {
   read: string[]
   /** the open bead whose reply opening it marked: it holds its place until the selection moves on */
   holding: string | null
+  /** stored fold state per section key; every section is open without it */
+  isFolded?: (sectionKey: string, fallback: boolean) => boolean
 }
 
 /** the local calendar day, 2026-10-13 */
@@ -221,7 +229,7 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
 
   const sections: InboxSection[] = []
   const push = (key: InboxKind, title: string, note: string, rows: Issue[]) => {
-    if (rows.length) sections.push({ key, title, note, rows })
+    if (rows.length) sections.push({ key, title, note, rows, folded: opts.isFolded?.(inboxFoldKey(key), false) ?? false })
   }
   push('reply', 'replies', 'an agent answered your note', replies)
   push('closed', 'answered, closed', 'your note got its answer and the bead closed', closedAnswers)
@@ -230,15 +238,21 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
   push('stale', 'stale', `untouched ${STALE_DAYS}+ days, keep, snooze or close`, picked)
 
   const order: string[] = []
-  const placed = new Set<string>()
+  const layout: string[] = []
+  const onScreen = new Set<string>()
+  const laidOut = new Set<string>()
   const counted = new Set<string>()
   for (const section of sections) {
     for (const issue of section.rows) {
       if (!(isAnswerSection(section.key) && read.has(issue.id))) counted.add(issue.id)
-      if (placed.has(issue.id)) continue
-      placed.add(issue.id)
+      if (!laidOut.has(issue.id)) {
+        laidOut.add(issue.id)
+        layout.push(issue.id)
+      }
+      if (section.folded || onScreen.has(issue.id)) continue
+      onScreen.add(issue.id)
       order.push(issue.id)
     }
   }
-  return { sections, order, layout: order, count: counted.size, read }
+  return { sections, order, layout, count: counted.size, read }
 }

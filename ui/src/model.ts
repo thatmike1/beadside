@@ -496,3 +496,19 @@ export function unreadNote(comments: Comment[]): Comment | undefined {
   const newest = (match: (c: Comment) => boolean) => [...comments].reverse().find(match)
   return newest((c) => c.by.self) ?? newest((c) => c.by.kind === 'unknown')
 }
+
+/** the order the comment thread reads in; bd hands it over oldest first */
+export type CommentOrder = 'oldest' | 'newest'
+
+/** the thread in the chosen order; comments with the same or an unreadable time keep bd's order */
+export function orderComments(comments: Comment[], order: CommentOrder): Comment[] {
+  const at = (c: Comment) => {
+    const t = Date.parse(c.created_at)
+    return Number.isNaN(t) ? 0 : t
+  }
+  const sorted = comments
+    .map((comment, index) => ({ comment, index }))
+    .sort((a, b) => at(a.comment) - at(b.comment) || a.index - b.index)
+    .map(({ comment }) => comment)
+  return order === 'newest' ? sorted.reverse() : sorted
+}

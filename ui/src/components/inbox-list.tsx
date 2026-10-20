@@ -3,7 +3,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { BoardConfig, Issue } from '../api'
 import type { Inbox, InboxKind } from '../inbox'
-import { answerOf, daysUntouched, dueState, isAnswerSection } from '../inbox'
+import { answerOf, daysUntouched, dueState, inboxFoldKey, isAnswerSection } from '../inbox'
 import { axisOf } from '../model'
 import { axisStyle, formatShortDate } from '../format'
 import { Row } from './row'
@@ -166,10 +166,12 @@ function rowFor(kind: InboxKind, issue: Issue, list: ListProps, read = false) {
 }
 
 /** the landing view: only what clears in one action, and a finished state when that is nothing */
-export function InboxList(props: ListProps & { inbox: Inbox; onBoard: () => void }) {
+export function InboxList(
+  props: ListProps & { inbox: Inbox; onBoard: () => void; onToggleSection: (sectionKey: string) => void },
+) {
   const { inbox } = props
   // read replies keep the list up until it is rebuilt, even with nothing left to clear
-  if (!inbox.order.length) {
+  if (!inbox.sections.length) {
     return (
       <div className="cleared">
         <b>Inbox clear.</b>
@@ -185,14 +187,23 @@ export function InboxList(props: ListProps & { inbox: Inbox; onBoard: () => void
   return (
     <>
       {inbox.sections.map((section) => (
-        <div className="sec" key={section.key}>
-          <div className={section.key === 'label' || section.key === 'due' ? 'sechead hot' : 'sechead'}>
+        <div className={section.folded ? 'sec folded' : 'sec'} key={section.key}>
+          <button
+            className={section.key === 'label' || section.key === 'due' ? 'sechead hot' : 'sechead'}
+            aria-expanded={!section.folded}
+            onClick={() => props.onToggleSection(inboxFoldKey(section.key))}
+          >
             <span>{section.title}</span>
             <span className="n">{section.rows.filter((i) => !(isAnswerSection(section.key) && inbox.read.has(i.id))).length}</span>
             <span className="note">{section.note}</span>
-          </div>
+          </button>
           <div className="secrule" />
-          {section.rows.map((issue) => rowFor(section.key, issue, props, inbox.read.has(issue.id)))}
+          {/* always rendered so the fold can animate; inert while folded so nothing inside takes focus */}
+          <div className="secbody" inert={section.folded}>
+            <div className="secbody-in">
+              {section.rows.map((issue) => rowFor(section.key, issue, props, inbox.read.has(issue.id)))}
+            </div>
+          </div>
         </div>
       ))}
     </>

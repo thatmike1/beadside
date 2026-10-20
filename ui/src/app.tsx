@@ -5,7 +5,7 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-quer
 import * as api from './api'
 import type { BoardConfig, Comment, Issue, IssueDetail, IssueList, SearchHit, SearchScope, Status } from './api'
 import { buildBoard, linksOf, sectionsHolding, shortId, step } from './model'
-import { answerOf, buildInbox, hasUnseenReply, localDay, staleBeads } from './inbox'
+import { answerOf, buildInbox, hasUnseenReply, inboxFoldKey, localDay, staleBeads } from './inbox'
 import { IndexPane, type View } from './components/index-pane'
 import { SNOOZE_UNTIL } from './components/inbox-list'
 import { DetailPane, type RevealTarget } from './components/detail-pane'
@@ -150,8 +150,17 @@ export function App() {
   const memory = useInboxMemory(localDay(now), issues ? stale : null, toaster.fail)
   const { seen, markSeen, picks } = memory
   const inbox = useMemo(
-    () => buildInbox(issues ?? [], { config, now, seen, picks, read: visitRead, holding }),
-    [issues, config, now, seen, picks, visitRead, holding],
+    () =>
+      buildInbox(issues ?? [], {
+        config,
+        now,
+        seen,
+        picks,
+        read: visitRead,
+        holding,
+        isFolded: folds.isFolded,
+      }),
+    [issues, config, now, seen, picks, visitRead, holding, folds.isFolded],
   )
   const staleNav = useMemo(() => {
     const order = stale.map((i) => i.id)
@@ -572,12 +581,15 @@ export function App() {
       .finally(() => refresh(null))
   }, [capture, qc, select, toaster, repoName, refresh, config])
 
+  // board sections by their key, inbox sections by their fold key; both live in one store
   const onToggleSection = useCallback(
     (sectionKey: string) => {
-      const section = board.sections.find((s) => s.key === sectionKey)
+      const section =
+        board.sections.find((s) => s.key === sectionKey) ??
+        inbox.sections.find((s) => inboxFoldKey(s.key) === sectionKey)
       if (section) setFolded(sectionKey, !section.folded)
     },
-    [board, setFolded],
+    [board, inbox, setFolded],
   )
 
   const onCopyId = useCallback(
@@ -656,14 +668,19 @@ export function App() {
         e.preventDefault()
         searchRef.current?.focus()
         searchRef.current?.select()
-      } else if ((searching || view !== 'board') && (e.key === 'h' || e.key === 'l')) {
-        // folds belong to the board, which is hidden behind the results or another view
+      } else if ((searching || view === 'stale') && (e.key === 'h' || e.key === 'l')) {
+        // folds belong to the board and the inbox; the results and the stale filter have none
       } else if (e.key === 'h' || e.key === 'l') {
         e.preventDefault()
         if (!selected) return
         const fold = e.key === 'h'
-        const section = sectionsHolding(board, selected).find((s) => s.folded !== fold)
-        if (section) setFolded(section.key, fold)
+        const key =
+          view === 'inbox'
+            ? inbox.sections
+                .filter((s) => s.folded !== fold && s.rows.some((i) => i.id === selected))
+                .map((s) => inboxFoldKey(s.key))[0]
+            : sectionsHolding(board, selected).find((s) => s.folded !== fold)?.key
+        if (key) setFolded(key, fold)
       } else if (e.key === 'c') {
         e.preventDefault()
         if (selected) onCopyId(selected)
@@ -698,7 +715,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [board, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme])
+  }, [board, inbox, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme])
 
   if (sessionQuery.isError || issuesQuery.isError) {
     const error = sessionQuery.error ?? issuesQuery.error
@@ -788,6 +805,7 @@ export function App() {
           links={links}
           byId={board.byId}
           onOpenLink={openLink}
+          folds={folds}
         />
       </div>
       <Toast toast={toaster.toast} onUndo={toaster.runUndo} onDismiss={toaster.dismiss} />
