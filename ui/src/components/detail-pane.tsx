@@ -2,10 +2,29 @@
 
 import { useEffect, useRef } from 'react'
 import type { CSSProperties, RefObject } from 'react'
-import type { BoardConfig, Comment, Issue, IssueDetail, SearchField, Status } from '../api'
-import { axisOf, flagsOf, orderComments, projectOf, shortId, unreadNote, type LinkGroup } from '../model'
-import { axisStyle, formatDate, formatDateTime, formatShortDate, statusLabel } from '../format'
-import type { Folds } from '../use-folds'
+import type { BoardConfig, Comment, Issue, IssueDetail, NoteRead, SearchField, Status } from '../api'
+import {
+  axisOf,
+  flagsOf,
+  foldPoint,
+  latestNote,
+  orderComments,
+  projectOf,
+  repliesAfterNote,
+  shortId,
+  unreadNote,
+  type LinkGroup,
+} from '../model'
+import {
+  axisStyle,
+  formatDate,
+  formatDateTime,
+  formatShortDate,
+  formatShortDateTime,
+  relativeTime,
+  statusLabel,
+} from '../format'
+import { useVisitFolds, type Folds } from '../use-folds'
 import { useCommentOrder } from '../use-comment-order'
 import { MarkdownText } from './markdown'
 import { WriteRow } from './write-row'
@@ -53,6 +72,34 @@ interface DetailPaneProps {
 /** fold key of the description, beside the index sections in the same store */
 const DESCRIPTION_FOLD = 'detail:description'
 
+/** fold key of a comment in the per-visit store */
+const commentFold = (id: string) => `comment:${id}`
+
+/** a date with its relative age on hover, so two days back does not read as old news */
+function When({ iso, prefix = '', long = false }: { iso: string | null | undefined; prefix?: string; long?: boolean }) {
+  return (
+    <span title={relativeTime(iso)}>
+      {prefix}
+      {long ? formatDateTime(iso) : formatDate(iso)}
+    </span>
+  )
+}
+
+/** "read by Claude, 20 Oct 11:04" on the human's latest note, with where that came from on hover */
+function ReadTag({ read, flag }: { read: NoteRead; flag: string | null }) {
+  const who = read.by.self ? 'you' : read.by.name
+  const ago = relativeTime(read.at)
+  const title =
+    read.source === 'label'
+      ? `${read.actor || 'someone'} took the ${flag ?? 'note'} flag off ${ago}, from bd's audit events`
+      : `the first agent comment after this note, ${ago}; this clone has no record of the flag coming off`
+  return (
+    <span className={read.source === 'label' ? 'readtag' : 'readtag guess'} title={title}>
+      {read.source === 'label' ? 'read' : 'answered'} by {who}, {formatShortDateTime(read.at)}
+    </span>
+  )
+}
+
 /** the comment header label: You for the board's human, the agent or human name, or a legacy marker */
 function CommentHead({ comment, human }: { comment: Comment; human: string }) {
   const { by } = comment
@@ -78,21 +125,54 @@ function CommentHead({ comment, human }: { comment: Comment; human: string }) {
   )
 }
 
-function CommentRow(props: { comment: Comment; human: string; flash: boolean; unread: boolean }) {
-  const { comment, human, flash, unread } = props
-  const cls = ['comment', comment.by.self ? 'mine' : '', comment.by.kind, unread ? 'unread' : '', flash ? 'flash' : '']
+function CommentRow(props: {
+  comment: Comment
+  human: string
+  flash: boolean
+  unread: boolean
+  /** an agent comment after the human's latest note */
+  reply: boolean
+  /** on the human's latest note, once a session read it */
+  read: NoteRead | null
+  flag: string | null
+  /** the headline the comment folds to, null when it reads whole */
+  head: string | null
+  open: boolean
+  onFold: (open: boolean) => void
+}) {
+  const { comment, human, flash, unread, reply, read, head, open } = props
+  const cls = [
+    'comment',
+    comment.by.self ? 'mine' : '',
+    comment.by.kind,
+    unread ? 'unread' : '',
+    reply ? 'reply' : '',
+    flash ? 'flash' : '',
+  ]
+  const folded = head !== null && !open
   return (
     <div className={cls.filter(Boolean).join(' ')} id={`comment-${comment.id}`}>
       <div className="chead">
         <CommentHead comment={comment} human={human} />
-        <span>{formatDateTime(comment.created_at)}</span>
+        <When iso={comment.created_at} long />
         {unread ? (
           <span className="unreadtag" title="no agent has read this note yet">
             unread
           </span>
         ) : null}
+        {reply ? (
+          <span className="replytag" title="written after your latest note">
+            reply
+          </span>
+        ) : null}
+        {read ? <ReadTag read={read} flag={props.flag} /> : null}
       </div>
-      <MarkdownText text={comment.text} className="ctext" />
+      <MarkdownText text={folded ? head : comment.text} className="ctext" />
+      {head !== null ? (
+        <button className="cmore" aria-expanded={open} onClick={() => props.onFold(!open)}>
+          {open ? 'less' : 'more'}
+        </button>
+      ) : null}
     </div>
   )
 }
@@ -101,21 +181,31 @@ function CommentRow(props: { comment: Comment; human: string; flash: boolean; un
 export function DetailPane(props: DetailPaneProps) {
   const { issue, detail, repoName, config, human, knownLabels, reveal, folds } = props
   const { order, toggle: toggleOrder } = useCommentOrder()
+  // comments open for this visit; every long one starts folded to its headline
+  const commentFolds = useVisitFolds()
   const descriptionFolded = folds.isFolded(DESCRIPTION_FOLD, false)
   const bodyRef = useRef<HTMLDivElement>(null)
   const readRef = useRef<HTMLElement>(null)
   const revealed = reveal && issue && reveal.id === issue.id ? reveal : null
   const detailReady = detail?.issue.id === issue?.id
 
-  // a search hit in a folded description opens it first
+  // a search hit in a folded description or comment opens it first, and it stays open
   const { setFolded } = folds
+  const { setFolded: setCommentFolded } = commentFolds
   useEffect(() => {
     if (revealed?.field === 'description') setFolded(DESCRIPTION_FOLD, false)
-  }, [revealed, setFolded])
+    if (revealed?.field === 'comment' && revealed.commentId) setCommentFolded(commentFold(revealed.commentId), false)
+  }, [revealed, setFolded, setCommentFolded])
 
-  // a search hit scrolls its field or comment into view once the detail has landed
+  // a search hit scrolls its field or comment into view once the detail has landed and a hit
+  // comment has opened; once per pick, so folding it again afterwards does not scroll back
+  const revealComment = revealed?.field === 'comment' ? revealed.commentId : null
+  const revealOpen = revealComment ? !commentFolds.isFolded(commentFold(revealComment), true) : true
+  const scrolledSeq = useRef<number | null>(null)
   useEffect(() => {
-    if (!revealed || !detailReady || !bodyRef.current) return
+    if (!revealed || !detailReady || !bodyRef.current || !revealOpen) return
+    if (scrolledSeq.current === revealed.seq) return
+    scrolledSeq.current = revealed.seq
     const selector =
       revealed.field === 'comment' && revealed.commentId
         ? `#comment-${CSS.escape(revealed.commentId)}`
@@ -128,7 +218,7 @@ export function DetailPane(props: DetailPaneProps) {
     }
     const el = bodyRef.current.querySelector(selector)
     el?.scrollIntoView({ block: 'center' })
-  }, [revealed, detailReady])
+  }, [revealed, detailReady, revealOpen])
 
   // on a phone the whole pane scrolls, so a new bead starts at its top
   const openId = issue?.id
@@ -155,6 +245,9 @@ export function DetailPane(props: DetailPaneProps) {
     config.note.addLabel && full.labels.includes(config.note.addLabel) ? unreadNote(comments) : undefined
   const thread = orderComments(comments, order)
   const flashComment = revealed?.field === 'comment' ? revealed.commentId : null
+  const replies = repliesAfterNote(comments)
+  const note = latestNote(comments)
+  const noteRead = detailReady && !unread ? (detail?.note_read ?? null) : null
 
   return (
     <main className="read" ref={readRef} style={axisStyle(axis, config) as CSSProperties}>
@@ -178,7 +271,7 @@ export function DetailPane(props: DetailPaneProps) {
             <span>
               {full.comment_count} {full.comment_count === 1 ? 'comment' : 'comments'}
             </span>
-            <span>touched {formatDate(full.updated_at)}</span>
+            <When iso={full.updated_at} prefix="touched " />
           </span>
         </div>
         <WriteRow
@@ -198,19 +291,19 @@ export function DetailPane(props: DetailPaneProps) {
             <span className="s">/</span>
             <span>{full.issue_type}</span>
             <span className="s">/</span>
-            <span>opened {formatDate(full.created_at)}</span>
+            <When iso={full.created_at} prefix="opened " />
             <span className="s">/</span>
-            <span>updated {formatDate(full.updated_at)}</span>
+            <When iso={full.updated_at} prefix="updated " />
             {full.closed_at ? (
               <>
                 <span className="s">/</span>
-                <span>closed {formatDate(full.closed_at)}</span>
+                <When iso={full.closed_at} prefix="closed " />
               </>
             ) : null}
             {full.due_at && full.status !== 'closed' ? (
               <>
                 <span className="s">/</span>
-                <span>due {formatDate(full.due_at)}</span>
+                <When iso={full.due_at} prefix="due " />
               </>
             ) : null}
             {project ? (
@@ -236,11 +329,12 @@ export function DetailPane(props: DetailPaneProps) {
           {unread ? (
             <button
               className="unreadjump"
-              onClick={() =>
+              onClick={() => {
+                setCommentFolded(commentFold(unread.id), false)
                 bodyRef.current
                   ?.querySelector(`#comment-${CSS.escape(unread.id)}`)
                   ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
-              }
+              }}
             >
               {unread.by.self ? 'your note is still unread' : 'an unread note, written before authors were recorded'}
               <span aria-hidden="true"> &#8595;</span>
@@ -337,6 +431,12 @@ export function DetailPane(props: DetailPaneProps) {
                 human={human}
                 flash={flashComment === c.id}
                 unread={c === unread}
+                reply={replies.has(c.id)}
+                read={c === note ? noteRead : null}
+                flag={config.note.addLabel}
+                head={foldPoint(c.text)}
+                open={!commentFolds.isFolded(commentFold(c.id), true)}
+                onFold={(open) => setCommentFolded(commentFold(c.id), !open)}
                 key={c.id}
               />
             ))

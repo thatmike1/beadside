@@ -5,7 +5,7 @@ import type { BoardConfig, Issue } from '../api'
 import type { Inbox, InboxKind } from '../inbox'
 import { answerOf, daysUntouched, dueState, inboxFoldKey, isAnswerSection } from '../inbox'
 import { axisOf } from '../model'
-import { axisStyle, formatShortDate } from '../format'
+import { axisStyle, formatShortDate, relativeTime } from '../format'
 import { Row } from './row'
 
 /** the one-click verdicts the inbox and the stale filter offer */
@@ -53,6 +53,8 @@ function untouchedText(issue: Issue, now: Date): string {
 function ActionRow(props: {
   issue: Issue
   why: string
+  /** the date the why line names, read back as "2 days ago" on hover */
+  at?: string | null | undefined
   hot?: boolean
   /** a reply opened this visit: dimmed, with a read mark, until the list is rebuilt */
   read?: boolean
@@ -85,7 +87,11 @@ function ActionRow(props: {
       {why || actions ? (
         <div className="iact">
           {read ? <span className="readmark">read</span> : null}
-          {why ? <span className={hot ? 'why hot' : 'why'}>{why}</span> : null}
+          {why ? (
+            <span className={hot ? 'why hot' : 'why'} title={relativeTime(props.at, list.now) || undefined}>
+              {why}
+            </span>
+          ) : null}
           {actions}
         </div>
       ) : null}
@@ -134,10 +140,12 @@ function rowFor(kind: InboxKind, issue: Issue, list: ListProps, read = false) {
   if (kind === 'reply') {
     const reply = issue.agent_reply
     const why = reply ? `${reply.name} replied ${formatShortDate(reply.at)}` : ''
-    return <ActionRow key={issue.id} issue={issue} why={why} read={read} list={list} />
+    return <ActionRow key={issue.id} issue={issue} why={why} at={reply?.at} read={read} list={list} />
   }
   if (kind === 'closed') {
-    return <ActionRow key={issue.id} issue={issue} why={closedText(issue)} read={read} list={list} />
+    return (
+      <ActionRow key={issue.id} issue={issue} why={closedText(issue)} at={answerOf(issue)?.at} read={read} list={list} />
+    )
   }
   if (kind === 'due') {
     return (
@@ -145,6 +153,7 @@ function rowFor(kind: InboxKind, issue: Issue, list: ListProps, read = false) {
         key={issue.id}
         issue={issue}
         why={dueText(issue, list.now)}
+        at={issue.due_at}
         hot={dueState(issue, list.now) === 'overdue'}
         actions={<DueActions issue={issue} list={list} />}
         list={list}
@@ -157,6 +166,7 @@ function rowFor(kind: InboxKind, issue: Issue, list: ListProps, read = false) {
         key={issue.id}
         issue={issue}
         why={untouchedText(issue, list.now)}
+        at={issue.updated_at}
         actions={<StaleActions issue={issue} list={list} />}
         list={list}
       />

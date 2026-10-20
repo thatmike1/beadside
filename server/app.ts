@@ -23,6 +23,7 @@ import {
 } from './inbox-state'
 import { notesFor, sessionsFor } from './joins'
 import { LiveFeed, type LiveFeedOptions, type LiveState } from './live'
+import { noteRead } from './note-read'
 import { DEFAULT_LIMIT, SCOPES, searchIssues, type SearchScope } from './search'
 
 export interface AppConfig {
@@ -414,19 +415,22 @@ export function createBoard(config: AppConfig): Board {
     app.get('/*', serveStatic({ path: `${uiDist}/index.html` }))
   }
 
-  /** issue plus its comments and the two joins */
+  /** issue plus its comments, the two joins, and when the human's latest note was read */
   async function detail(id: string) {
     const issue: Issue = await client.issue(id)
-    const [comments, sessions, notes] = await Promise.all([
+    const [comments, sessions, notes, events] = await Promise.all([
       client.comments(id),
       sessionsFor(id, agentsview),
       notesFor(id, repo.path, boardConfig.notesDir),
+      // a bd without `history --events` only costs the marker its best source
+      client.auditEvents(id).catch(() => []),
     ])
     return {
       issue,
       comments: comments.map((comment) => ({ ...comment, by: classifyAuthor(comment.author, human) })),
       sessions,
       notes,
+      note_read: noteRead({ comments, events, labels: issue.labels, flag: boardConfig.note.addLabel, human }),
     }
   }
 

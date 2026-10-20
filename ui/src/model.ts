@@ -512,3 +512,88 @@ export function orderComments(comments: Comment[], order: CommentOrder): Comment
     .map(({ comment }) => comment)
   return order === 'newest' ? sorted.reverse() : sorted
 }
+
+const commentTime = (c: Comment): number => {
+  const t = Date.parse(c.created_at)
+  return Number.isNaN(t) ? NaN : t
+}
+
+/** the newest comment the board's human wrote, the note the read marker and reply tags hang off */
+export function latestNote(comments: Comment[]): Comment | undefined {
+  let latest: Comment | undefined
+  for (const c of comments) {
+    if (!c.by.self) continue
+    if (!latest || commentTime(c) >= commentTime(latest)) latest = c
+  }
+  return latest
+}
+
+/**
+ * ids of the agent comments written after the human's latest note: the answers, as against older
+ * status updates. the same reading as the list's `agent_reply`; legacy unknown authors count as
+ * neither side, and a bead the human never commented on has none
+ */
+export function repliesAfterNote(comments: Comment[]): Set<string> {
+  const note = latestNote(comments)
+  const at = note ? commentTime(note) : NaN
+  if (Number.isNaN(at)) return new Set()
+  return new Set(comments.filter((c) => c.by.kind === 'agent' && commentTime(c) > at).map((c) => c.id))
+}
+
+/** about two rows of comment text in the wide pane: a first line longer than this is not a headline */
+export const HEADLINE_MAX = 200
+/** a comment this short, in at most this many lines, reads whole and never folds */
+const FOLD_MIN_CHARS = 300
+const FOLD_MIN_LINES = 3
+/** a fold that would hide less than this is not worth a click */
+const FOLD_MIN_HIDDEN = 40
+/** words whose trailing dot does not end a sentence */
+const ABBREVIATIONS = /(?:^|[\s(])(?:e\.g|i\.e|etc|vs|cf|approx|incl|resp|ca|al|[A-Z])\.$/
+
+/** markdown that must not be cut open: an odd count of backticks, or more openers than closers */
+function balanced(text: string): boolean {
+  const count = (re: RegExp) => (text.match(re) ?? []).length
+  return (
+    count(/`/g) % 2 === 0 && count(/\(/g) <= count(/\)/g) && count(/\[/g) <= count(/\]/g) && count(/\*\*/g) % 2 === 0
+  )
+}
+
+/** the first sentence of a line: up to the first ., ! or ? followed by a space, not inside code or a link */
+function firstSentence(line: string): string | null {
+  const end = /[.!?](?=\s+\S)/g
+  for (const match of line.matchAll(end)) {
+    const head = line.slice(0, match.index + 1)
+    if (head.length < 12 || ABBREVIATIONS.test(head) || !balanced(head)) continue
+    return head
+  }
+  return null
+}
+
+/** the line cut at the last space before HEADLINE_MAX that leaves its markdown whole, with an ellipsis */
+function wordCut(line: string): string | null {
+  for (let at = line.lastIndexOf(' ', HEADLINE_MAX); at > HEADLINE_MAX / 2; at = line.lastIndexOf(' ', at - 1)) {
+    const head = line.slice(0, at).replace(/[\s,;:–-]+$/, '')
+    if (balanced(head)) return `${head}…`
+  }
+  return null
+}
+
+/**
+ * where a comment folds: the headline shown while the rest waits behind "more", or null when it
+ * reads whole. the headline is the first line, which is the convention (one plain line, a blank
+ * line, then the detail). a first line past about two rows, the usual shape of a comment written
+ * as one paragraph, gives its first sentence instead, and a first sentence that runs past three
+ * rows is cut at a word with an ellipsis. a comment that opens with a code fence or a table
+ * does not fold.
+ */
+export function foldPoint(text: string): string | null {
+  const body = text.trim()
+  const lines = body.split('\n')
+  if (body.length <= FOLD_MIN_CHARS && lines.length <= FOLD_MIN_LINES) return null
+  const first = lines[0]!.trimEnd()
+  if (/^\s*(```|~~~|\|)/.test(first)) return null
+  let head: string | null = first.length <= HEADLINE_MAX && balanced(first) ? first : firstSentence(first)
+  if (!head || head.length > HEADLINE_MAX * 1.5) head = wordCut(first)
+  if (!head) return null
+  return body.length - head.length >= FOLD_MIN_HIDDEN ? head : null
+}

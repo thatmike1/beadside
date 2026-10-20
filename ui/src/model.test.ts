@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import type { BoardConfig, Issue } from './api'
 import type { Comment } from './api'
-import { buildBoard, orderComments, projectOf, sectionsHolding, step, subsOf, unreadNote } from './model'
+import {
+  buildBoard,
+  foldPoint,
+  HEADLINE_MAX,
+  latestNote,
+  orderComments,
+  projectOf,
+  repliesAfterNote,
+  sectionsHolding,
+  step,
+  subsOf,
+  unreadNote,
+} from './model'
 import type { BoardOptions } from './model'
 
 const FULL_CONFIG = {
@@ -403,5 +415,97 @@ describe('orderComments', () => {
   it('leaves the input alone', () => {
     orderComments(thread, 'newest')
     expect(thread.map((c) => c.id)).toEqual(['b', 'a', 'tie-1', 'tie-2'])
+  })
+})
+
+describe('repliesAfterNote', () => {
+  const c = (id: string, kind: 'human' | 'agent' | 'unknown', created_at: string, self = kind === 'human'): Comment => ({
+    id,
+    issue_id: 'x',
+    author: id,
+    text: id,
+    created_at,
+    by: { kind, name: id, self },
+  })
+
+  it('tags agent comments newer than the latest note, not older status updates', () => {
+    const thread = [
+      c('status', 'agent', '2026-10-18T09:00:00Z'),
+      c('first-note', 'human', '2026-10-18T10:00:00Z'),
+      c('old-answer', 'agent', '2026-10-18T11:00:00Z'),
+      c('note', 'human', '2026-10-20T10:00:00Z'),
+      c('answer', 'agent', '2026-10-20T11:00:00Z'),
+      c('legacy', 'unknown', '2026-10-20T11:30:00Z'),
+      c('follow-up', 'agent', '2026-10-20T12:00:00Z'),
+    ]
+    expect(latestNote(thread)?.id).toBe('note')
+    expect([...repliesAfterNote(thread)]).toEqual(['answer', 'follow-up'])
+  })
+
+  it('finds the latest note by time whatever order the thread is in', () => {
+    const thread = [
+      c('answer', 'agent', '2026-10-20T11:00:00Z'),
+      c('note', 'human', '2026-10-20T10:00:00Z'),
+      c('first-note', 'human', '2026-10-18T10:00:00Z'),
+    ]
+    expect([...repliesAfterNote(thread)]).toEqual(['answer'])
+  })
+
+  it('tags nothing when the human never commented, or wrote last', () => {
+    expect(repliesAfterNote([c('a', 'agent', '2026-10-20T11:00:00Z')]).size).toBe(0)
+    expect(
+      repliesAfterNote([c('a', 'agent', '2026-10-20T11:00:00Z'), c('note', 'human', '2026-10-20T12:00:00Z')]).size,
+    ).toBe(0)
+    // another human's comment is no note from the board's human
+    expect(
+      repliesAfterNote([c('jan', 'human', '2026-10-20T10:00:00Z', false), c('a', 'agent', '2026-10-20T11:00:00Z')]).size,
+    ).toBe(0)
+  })
+})
+
+describe('foldPoint', () => {
+  const detail = 'The full detail, with ids, paths and commands, runs on for the next session. '.repeat(4)
+
+  it('folds a conventional comment to its headline line', () => {
+    expect(foldPoint(`Shipped the folded comments; nothing for you to do.\n\n${detail}`)).toBe(
+      'Shipped the folded comments; nothing for you to do.',
+    )
+  })
+
+  it('leaves a short comment whole', () => {
+    expect(foldPoint('all done, works great')).toBeNull()
+    expect(foldPoint('headline\n\ntwo short lines of detail')).toBeNull()
+  })
+
+  it('gives the first sentence of a long single paragraph', () => {
+    const text = `11 Sep: v2 job prompts written, runbook in v2-runbook.md. ${detail}`
+    expect(foldPoint(text)).toBe('11 Sep: v2 job prompts written, runbook in v2-runbook.md.')
+  })
+
+  it('does not end a sentence at an abbreviation, a version or inside code', () => {
+    const text = `Bumped to v1.3.0 e.g. for the journal, see \`a. b\` too. ${detail}`
+    expect(foldPoint(text)).toBe('Bumped to v1.3.0 e.g. for the journal, see `a. b` too.')
+  })
+
+  it('cuts a run-on first sentence at a word, inside about two rows', () => {
+    const text = `${'word '.repeat(80)}end. ${detail}`
+    const head = foldPoint(text)
+    expect(head?.endsWith('\u2026')).toBe(true)
+    expect(head!.length).toBeLessThanOrEqual(HEADLINE_MAX + 1)
+  })
+
+  it('takes a long first line as a sentence even when more lines follow', () => {
+    const text = `First sentence of a long opening line. ${'more of it '.repeat(30)}\n\n${detail}`
+    expect(foldPoint(text)).toBe('First sentence of a long opening line.')
+  })
+
+  it('does not fold a comment that opens with a code fence or a table', () => {
+    expect(foldPoint(`\`\`\`\ncode\n\`\`\`\n${detail}`)).toBeNull()
+    expect(foldPoint(`| a | b |\n|---|---|\n${detail}`)).toBeNull()
+  })
+
+  it('does not cut a link open', () => {
+    const text = `See [the page (draft)](https://example.com/a. b) for it. ${detail}`
+    expect(foldPoint(text)).toBe('See [the page (draft)](https://example.com/a. b) for it.')
   })
 })

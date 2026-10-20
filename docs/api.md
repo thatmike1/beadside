@@ -100,6 +100,20 @@ interface IssueDetail {
   comments: Comment[]        // `bd comments <id> --json`
   sessions: SessionHit[] | null   // null when AgentsView is off or not reachable
   notes: NoteHit[]
+  note_read: NoteRead | null // when the human's latest note was read; see below
+}
+
+// when a session read the human's latest note. null while the bead carries `note.addLabel`, when
+// the human never commented, or when nothing says it was read.
+// source `label`: the earliest removal of `note.addLabel` at or after the note, from
+// `bd history <id> --events --json` (bd's audit events table; actor and time). that table is
+// local to the clone that made the change and does not travel with `bd sync`.
+// source `reply`: without such a row, the first agent comment after the note.
+interface NoteRead {
+  at: string
+  actor: string              // the audit actor or the reply's stored author
+  by: Author
+  source: 'label' | 'reply'
 }
 
 interface LaneConfig { label: string; note: string | null; glyph: string; color: string }

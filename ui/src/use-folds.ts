@@ -1,4 +1,5 @@
-// which index sections are folded, kept in localStorage per section key
+// which index sections are folded, kept in localStorage per section key; useVisitFolds keeps
+// the same shape for this page only
 
 import { useCallback, useState } from 'react'
 
@@ -54,6 +55,22 @@ export function useFolds(): Folds {
       }
       return next
     })
+  }, [])
+
+  return { isFolded, setFolded }
+}
+
+/** fold state for this visit only, for things too many and too short-lived to store: comments */
+export function useVisitFolds(): Folds {
+  const [state, setState] = useState<Record<string, boolean>>({})
+
+  const isFolded = useCallback(
+    (key: string, fallback: boolean) => state[key] ?? fallback,
+    [state],
+  )
+
+  const setFolded = useCallback((key: string, folded: boolean) => {
+    setState((prev) => (prev[key] === folded ? prev : { ...prev, [key]: folded }))
   }, [])
 
   return { isFolded, setFolded }

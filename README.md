@@ -79,6 +79,30 @@ An emptied inbox says so. `b` switches to the **board**, the lanes as before, an
 
 The detail pane lists the bead's links grouped by kind and direction, headed as `bd show` heads them (parent, children, depends on, blocks, related, discovered from, discovered, superseded by, supersedes); bd's `related` and `relates-to` share one group. A click opens the linked bead.
 
+## reading a comment thread
+
+Comments read oldest first by default; the toggle beside the comments heading flips the order and is remembered per browser. Every date in the detail pane and on inbox rows shows how long ago it was on hover ("2 days ago").
+
+- **headlines**: a long comment shows only its headline and folds the rest behind **more**, open for the rest of the visit. The headline is the comment's first line. When that line runs past about two rows, which is how a comment written as one paragraph looks, it is the first sentence instead, cut at a word with an ellipsis if even that runs long. Short comments, and comments that open with a code block or a table, read whole. A search hit inside a folded comment opens it
+- **replies**: agent comments written after your latest note carry a **reply** tag, so the answer stands apart from older status updates. This is the same reading as the inbox's replies section
+- **read marker**: once your note flag (`note.addLabel`) comes off, your latest note says who read it and when, "read by Claude, 20 Oct 11:04". The source is bd's audit events (`bd history <id> --events`), which record each label removal with its actor and time. That table belongs to the clone that made the change: `bd sync` brings the label change across but not the event, so a board over a second clone (a server you read from a phone) has no record. There, and for a note sent without the flag, the marker falls back to the first agent comment after the note and says "answered by" in an outlined tag; hover tells which source it came from. Dolt's commit history is no help here, since its snapshots carry neither labels nor the actor
+
+### the headline convention
+
+Folding is built for comments that open with one plain line saying what happened and what, if anything, the human has to do, followed by a blank line and then the full detail for the next session:
+
+```text
+Shipped the folded comments; nothing for you to do.
+
+Details: commit 4852d04 on master, tests 220/220, checked light, dark and phone width...
+```
+
+The headline is for the human skimming the board, so it skips ids, hashes and paths; the detail stays as complete as it would be without the headline, because a later session may read nothing else. Comments written before the convention fold too, to their first line or first sentence. To have your agents adopt it, add a line to their instructions:
+
+```markdown
+- Bead comments open with a headline: one plain sentence saying what happened and what, if anything, I have to do. Then a blank line, then the full detail for the next session.
+```
+
 ## works with no config
 
 Out of the box with no configuration file, beadside displays a complete board over any beads backlog:

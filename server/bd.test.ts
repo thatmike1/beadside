@@ -132,6 +132,20 @@ describe('reads', () => {
     const empty = fake(() => '\n')
     expect(await new BeadsClient('/repo', empty.runner).comments('repo-abc')).toEqual([])
   })
+
+  it('reads the audit events, treating null and malformed rows as none', async () => {
+    const rows = fake(() =>
+      JSON.stringify([
+        { event_type: 'label_removed', actor: 'agent:claude', comment: 'Removed label: x', created_at: '2026-10-20T11:00:00Z' },
+        { event_type: 'updated' },
+        null,
+      ]),
+    )
+    expect(await new BeadsClient('/repo', rows.runner).auditEvents('repo-abc')).toHaveLength(1)
+    expect(rows.calls).toEqual([['history', 'repo-abc', '--events', '--json']])
+    // bd prints null for a bead with no audit rows
+    expect(await new BeadsClient('/repo', fake(() => 'null\n').runner).auditEvents('repo-abc')).toEqual([])
+  })
 })
 
 describe('comment', () => {

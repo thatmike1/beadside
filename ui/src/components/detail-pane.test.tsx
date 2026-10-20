@@ -1,7 +1,7 @@
 import { createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import type { BoardConfig, Comment, Issue } from '../api'
+import type { BoardConfig, Comment, Issue, NoteRead } from '../api'
 import { DetailPane } from './detail-pane'
 
 const CONFIG: BoardConfig = {
@@ -50,12 +50,16 @@ const COMMENTS = [
   comment('later', '2026-10-17T09:00:00Z', false),
 ]
 
-function render(issue: Issue = ISSUE): string {
+function render(
+  issue: Issue = ISSUE,
+  comments: Comment[] = COMMENTS,
+  noteRead: NoteRead | null = null,
+): string {
   const noop = () => {}
   return renderToStaticMarkup(
     <DetailPane
       issue={issue}
-      detail={{ issue, comments: COMMENTS, sessions: null, notes: [] }}
+      detail={{ issue, comments, sessions: null, notes: [], note_read: noteRead }}
       repoName="repo"
       config={CONFIG}
       human="Tester"
@@ -109,5 +113,53 @@ describe('detail pane comments', () => {
 
   it('heads the comments with the order they read in', () => {
     expect(render()).toContain('oldest first')
+  })
+})
+
+describe('detail pane replies, read marker and folds', () => {
+  const READ: NoteRead = {
+    at: '2026-10-16T18:04:00Z',
+    actor: 'agent:claude',
+    by: { kind: 'agent', name: 'Claude', self: false },
+    source: 'label',
+  }
+
+  it('tags agent comments after the latest note as replies, not the ones before it', () => {
+    const html = render()
+    expect(html).toMatch(/id="comment-later"[\s\S]*?class="replytag"/)
+    const first = html.slice(html.indexOf('id="comment-first"'), html.indexOf('id="comment-mine"'))
+    expect(first).not.toContain('replytag')
+  })
+
+  it('shows who read the note and when, only once the flag is gone', () => {
+    const html = render({ ...ISSUE, labels: [] }, COMMENTS, READ)
+    const mine = html.slice(html.indexOf('id="comment-mine"'), html.indexOf('id="comment-later"'))
+    expect(mine).toMatch(/class="readtag"[^>]*>read by Claude, \d+ Oct \d\d:\d\d</)
+    // still flagged: the note is unread, whatever the server sent
+    expect(render(ISSUE, COMMENTS, READ)).not.toContain('class="readtag')
+  })
+
+  it('marks a read guessed from the first reply as a guess', () => {
+    const html = render({ ...ISSUE, labels: [] }, COMMENTS, { ...READ, source: 'reply' })
+    expect(html).toContain('class="readtag guess"')
+    expect(html).toContain('answered by Claude')
+  })
+
+  it('folds a long comment to its headline behind more', () => {
+    const long = {
+      ...comment('long', '2026-10-17T10:00:00Z', false),
+      text: `Shipped it; nothing for you to do.\n\n${'The full detail for the next session. '.repeat(12)}`,
+    }
+    const html = render(ISSUE, [...COMMENTS, long])
+    const row = html.slice(html.indexOf('id="comment-long"'))
+    expect(row).toContain('Shipped it; nothing for you to do.')
+    expect(row).not.toContain('The full detail')
+    expect(row).toMatch(/class="cmore" aria-expanded="false">more</)
+    // short comments carry no toggle
+    expect(html.match(/class="cmore"/g)).toHaveLength(1)
+  })
+
+  it('puts the relative age of every comment date on hover', () => {
+    expect(render()).toMatch(/<span title="[^"]+ ago">\d+ Oct 2026 \d\d:\d\d<\/span>/)
   })
 })

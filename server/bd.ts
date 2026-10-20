@@ -40,6 +40,15 @@ export interface Comment {
 }
 
 /** one issue with its full comment thread, the unit search reads */
+/** one row of `bd history <id> --events --json`; only the fields the board reads */
+export interface AuditEvent {
+  event_type: string
+  actor?: string
+  /** `Removed label: <label>` on a label_removed row */
+  comment?: string
+  created_at: string
+}
+
 export interface IssueWithComments {
   issue: Issue
   comments: Comment[]
@@ -319,6 +328,22 @@ export class BeadsClient {
     if (!raw) return []
     const payload = parseJson<unknown>(raw, 'bd comments')
     return Array.isArray(payload) ? (payload as Comment[]) : []
+  }
+
+  /**
+   * the bead's audit trail, from `bd history <id> --events --json`, newest first. bd prints
+   * `null` for a bead with none. the table is local to each clone; see note-read.ts
+   */
+  async auditEvents(id: string): Promise<AuditEvent[]> {
+    assertId(id)
+    const raw = (await this.run(['history', id, '--events', '--json'])).trim()
+    if (!raw) return []
+    const payload = parseJson<unknown>(raw, 'bd history')
+    if (!Array.isArray(payload)) return []
+    return payload.filter(
+      (row): row is AuditEvent =>
+        !!row && typeof row === 'object' && typeof row.event_type === 'string' && typeof row.created_at === 'string',
+    )
   }
 
   /**

@@ -104,11 +104,23 @@ export interface NoteHit {
   excerpt: string
 }
 
+/** when a session read the human's latest note; see server/note-read.ts */
+export interface NoteRead {
+  at: string
+  /** the stored identity: the audit actor or the reply's author */
+  actor: string
+  by: Author
+  /** label: the note flag's removal in bd's audit events; reply: the first agent comment after the note */
+  source: 'label' | 'reply'
+}
+
 export interface IssueDetail {
   issue: Issue
   comments: Comment[]
   sessions: SessionHit[] | null
   notes: NoteHit[]
+  /** null while the note is unread, or when there is no note or no sign it was read */
+  note_read?: NoteRead | null
 }
 
 export interface LaneConfig {

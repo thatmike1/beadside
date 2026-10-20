@@ -6,6 +6,7 @@ import { createApp, createBoard, idsOriginAllowed } from './app'
 import { BeadsClient, type Comment, type Follower, type FollowHandlers, type Issue, type RunResult, type Runner } from './bd'
 import { resolveConfig, type ResolvedBoardConfig } from './config'
 import type { NoteHit, SessionHit } from './joins'
+import type { NoteRead } from './note-read'
 
 interface SessionBody {
   token: string
@@ -24,6 +25,7 @@ interface DetailBody {
   comments: Comment[]
   sessions: SessionHit[] | null
   notes: NoteHit[]
+  note_read: NoteRead | null
 }
 interface IssueBody {
   issue: Issue
@@ -163,6 +165,38 @@ describe('reads', () => {
     ])
   })
 
+  it('reads the note-read marker from the audit events, and survives a bd without them', async () => {
+    const comments = [
+      { id: 'c1', issue_id: 'repo-abc', author: 'human:tester', text: 'look', created_at: '2026-10-20T10:00:00Z' },
+    ]
+    const events = [
+      { event_type: 'label_removed', actor: 'agent:codex', comment: 'Removed label: from-human', created_at: '2026-10-20T10:30:00Z' },
+    ]
+    const build = (history: RunResult) =>
+      createApp({
+        client: new BeadsClient(
+          repo,
+          async (args) => {
+            if (args[0] === 'show') return ok(JSON.stringify([issueRecord({ labels: ['test-label'] })]))
+            if (args[0] === 'comments') return ok(JSON.stringify(comments))
+            if (args[0] === 'history') return history
+            return ok('')
+          },
+          { actor: 'human:tester' },
+        ),
+        repo: { name: 'repo', path: repo },
+        agentsview: null,
+        human: { id: 'human:tester', name: 'Tester' },
+        token: TOKEN,
+        config: testConfig,
+      })
+    const body = await json<DetailBody>(await build(ok(JSON.stringify(events))).request('/api/issues/repo-abc'))
+    expect(body.note_read).toMatchObject({ at: '2026-10-20T10:30:00Z', actor: 'agent:codex', source: 'label' })
+    const old = await build({ stdout: '', stderr: 'unknown flag: --events', code: 1 }).request('/api/issues/repo-abc')
+    expect(old.status).toBe(200)
+    expect((await json<DetailBody>(old)).note_read).toBeNull()
+  })
+
   it('404s a missing issue and an unknown api route', async () => {
     const { app } = appFor()
     expect((await app.request('/api/issues/repo-missing')).status).toBe(404)
@@ -253,6 +287,7 @@ describe('writes', () => {
       ['update', 'repo-abc', '--add-label=from-human', '--remove-label=needs-human'],
       ['show', 'repo-abc', '--json'],
       ['comments', 'repo-abc', '--json'],
+      ['history', 'repo-abc', '--events', '--json'],
     ])
   })
 

@@ -18,6 +18,43 @@ export function formatDateTime(iso: string | null | undefined): string {
   return day ? `${day} ${formatTime(iso)}` : ''
 }
 
+/** 3 Sep 17:35, for tight spots where the hour matters */
+export function formatShortDateTime(iso: string | null | undefined): string {
+  const day = formatShortDate(iso)
+  return day ? `${day} ${formatTime(iso)}` : ''
+}
+
+const RELATIVE_STEPS: { unit: string; ms: number }[] = [
+  { unit: 'year', ms: 365 * 86_400_000 },
+  { unit: 'month', ms: 30 * 86_400_000 },
+  { unit: 'week', ms: 7 * 86_400_000 },
+  { unit: 'day', ms: 86_400_000 },
+  { unit: 'hour', ms: 3_600_000 },
+  { unit: 'minute', ms: 60_000 },
+]
+
+/**
+ * "2 days ago", "in 3 hours", "just now": elapsed time in whole units, for the hover title on a
+ * date. weeks start at 14 days and months at 60, so "10 days ago" stays exact
+ */
+export function relativeTime(iso: string | null | undefined, now: Date = new Date()): string {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return ''
+  const diff = now.getTime() - t
+  const abs = Math.abs(diff)
+  if (abs < 45_000) return 'just now'
+  const step =
+    RELATIVE_STEPS.find((s) => {
+      if (s.unit === 'week') return abs >= 14 * 86_400_000
+      if (s.unit === 'month') return abs >= 60 * 86_400_000
+      return abs >= s.ms
+    }) ?? RELATIVE_STEPS[RELATIVE_STEPS.length - 1]!
+  const n = Math.max(1, Math.floor(abs / step.ms))
+  const phrase = `${n} ${step.unit}${n === 1 ? '' : 's'}`
+  return diff >= 0 ? `${phrase} ago` : `in ${phrase}`
+}
+
 /** 3 Sep, for tight columns */
 export function formatShortDate(iso: string | null | undefined): string {
   if (!iso) return ''
