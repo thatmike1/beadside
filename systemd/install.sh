@@ -26,7 +26,7 @@ fi
 BD_DIR="$(dirname "$BD_BIN")"
 
 echo "building ui..."
-npm --prefix "$HERE" run build
+pnpm --dir "$HERE" run build
 
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 mkdir -p "$UNIT_DIR"

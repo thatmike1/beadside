@@ -1,5 +1,5 @@
 // serves docs/api.md-shaped responses from scripts/demo for ui development without bd
-// usage: npm run mock [-- port]   (default 1338; runs through tsx for the shared config loader)
+// usage: pnpm run mock [port]   (default 1338; runs through tsx for the shared config loader)
 import { createServer } from 'node:http'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
