@@ -17,9 +17,12 @@ Formerly bd-board. The old names still work: `bd-board` runs the same CLI (it pr
 ```bash
 git clone https://github.com/thatmike1/beadside
 cd beadside
-npm install
-npm run build
+pnpm install --frozen-lockfile
+pnpm run build
 ```
+
+Use pnpm 12.15.0 (pinned in `packageManager`) with Node.js 22 or newer.
+Install pnpm with the [standalone installer](https://pnpm.io/installation).
 
 Run in any beads repo:
 
@@ -290,10 +293,10 @@ Anyone who can open the page can write to the ledger, so keep the proxy private.
 ## develop
 
 ```bash
-npm run dev              # server on 1338 with tsx watch, vite ui on its own port proxying /api
-npm run mock             # mock api from scripts/demo for ui work without bd
-npm test                 # vitest test suite
-npm run typecheck        # tsc type checks across server and ui
+pnpm run dev              # server on 1338 with tsx watch, vite ui on its own port proxying /api
+pnpm run mock             # mock api from scripts/demo for ui work without bd
+pnpm test                 # vitest test suite
+pnpm run typecheck        # tsc type checks across server and ui
 ```
 
 ## layout

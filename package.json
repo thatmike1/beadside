@@ -10,7 +10,7 @@
     "bd-board": "./bin/bd-board.mjs"
   },
   "scripts": {
-    "dev": "concurrently -n server,ui -c blue,magenta \"npm:dev:server\" \"npm:dev:ui\"",
+    "dev": "concurrently -n server,ui -c blue,magenta \"pnpm run dev:server\" \"pnpm run dev:ui\"",
     "dev:server": "tsx watch server/main.ts --port 1338 --no-open",
     "dev:ui": "vite --config ui/vite.config.ts",
     "mock": "tsx scripts/mock-api.mjs",
@@ -39,5 +39,6 @@
     "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^5.0.0"
-  }
+  },
+  "packageManager": "pnpm@12.15.0"
 }
