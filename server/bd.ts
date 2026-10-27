@@ -113,6 +113,9 @@ export function localDay(now: Date): string {
 const KV_KEY_PATTERN = /^beadside\.[A-Za-z0-9_.-]{1,200}$/
 const MAX_KV_VALUE = 4_000
 
+// a metadata key the board writes: the asks key from config, checked there too
+const METADATA_KEY_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/
+
 /** throws unless the key sits in the board's `beadside.` namespace */
 export function assertKvKey(key: unknown): string {
   if (typeof key !== 'string' || !KV_KEY_PATTERN.test(key)) throw new BdError(`invalid kv key: ${String(key)}`)
@@ -432,6 +435,19 @@ export class BeadsClient {
     assertId(id)
     await this.run(['update', id, '--set-metadata', `kept_at=${localDay(now)}`])
     return this.issue(id)
+  }
+
+  /**
+   * writes one metadata key whole with `bd update <id> --metadata <json>`. bd merges metadata at
+   * the top level, so the other keys stay and this one is replaced, never merged into
+   */
+  async setMetadata(id: string, key: string, value: Record<string, unknown>): Promise<void> {
+    assertId(id)
+    if (!METADATA_KEY_PATTERN.test(key)) throw new BdError(`invalid metadata key: ${key}`)
+    const payload = JSON.stringify({ [key]: value })
+    if (payload.length > MAX_TEXT) throw new BdError('metadata value is too long')
+    // `--flag=value` form; the value is a JSON object, so it could not read as a flag anyway
+    await this.run(['update', id, `--metadata=${payload}`])
   }
 
   /** `bd update <id> --due=<when>`; bd reads +1w, next monday, a date or an ISO timestamp */

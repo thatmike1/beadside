@@ -8,7 +8,7 @@ const config: BoardConfig = {
   unlaned: { title: 'no lane', note: null }, subLabels: [],
   waiting: { labels: [], title: 'waiting', note: null },
   note: { addLabel: null, offerToClear: [] }, inbox: { labels: [] },
-  thoughts: null, flags: [], capture: { labels: [] },
+  thoughts: null, flags: [], capture: { labels: [] }, asks: null,
   derived: { allFlags: [], hotChips: [] },
 }
 

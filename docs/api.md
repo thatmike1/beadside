@@ -170,7 +170,9 @@ interface SessionInfo {
 | GET | `/api/inbox-state?day=<YYYY-MM-DD>` | | `InboxState`: the seen markers merged over every device and the day's stale picks. See Inbox state |
 | GET | `/api/search?q=<words>&scope=all\|open\|closed&limit=<1-500>` | | `SearchResult`, the same ranking `beadside search` prints |
 | GET | `/api/events` | | Server-sent events, same-origin only. `state` (`{ live: boolean }`) on connect and whenever live updates start or stop; `changed` (`{}`) when the ledger moved and lists should be refetched. See Live updates |
+| GET | `/api/asks?ids=<id,id>` | | `{ key: string, asks: AskEntry[] }`: every bead that is not closed and carries a question under `asks.key`, plus each id in `ids` (full or short, at most 200) whatever its state, so a page that raised a question can tell it closed. `AskEntry` is `{ id, title, status, closed_at, ask: Ask \| null }`, `Ask` as in `server/asks.ts`. 404 without an `asks` block in the config |
 | POST | `/api/issues/:id/comment` | `{ text: string, clear?: boolean }` | `IssueDetail` |
+| POST | `/api/issues/:id/ask/answer` | `{ text: string, via?: 'beadside' \| 'hub', clear?: boolean }` | `IssueDetail`; answers the stored question. 409 when the bead has none, 404 without an `asks` block |
 | POST | `/api/issues/:id/status` | `{ status: Status, reason?: string, until?: string }` | `{ issue }` |
 | POST | `/api/issues/:id/priority` | `{ priority: number }` | `{ issue }` |
 | POST | `/api/issues/:id/labels` | `{ add?: string[], remove?: string[] }` | `{ issue }` |
@@ -198,6 +200,7 @@ With the journal off, a bd without it, or a follower that keeps exiting, `state`
 - keep: `bd update <id> --set-metadata kept_at=<local YYYY-MM-DD>`. bd merges the key into the bead's metadata and moves `updated_at`, which is what takes the bead out of the stale filter; nothing else changes.
 - due: `bd update <id> --due=<due>`, the value validated against `^[A-Za-z0-9 +:._-]{1,64}$` (the same check `until` gets).
 - create: `bd q <title> -l <label>...`; defaults to `config.capture.labels` when none given.
+- ask answer: reads the bead's metadata fresh, then the comment write above (author, `note.addLabel`, and `note.offerToClear` removed unless `clear` is false), then `bd update <id> --metadata={"<asks.key>": {...}}` with the stored question as it was plus `answered: { at, by, via, text }`, `text` cut at 500 characters. bd merges metadata at the top level, so the question key is replaced whole and every other key stays.
 
 The server never accepts a raw argument list from the client. Every route maps to a fixed argument shape; ids are validated against `^[A-Za-z0-9_-]+(\.[0-9]+)?$` before use. Every `bd` call runs with `cwd` set to the repo path and `--no-color` where supported; output is parsed, never echoed to the client on success.
 

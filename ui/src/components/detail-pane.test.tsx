@@ -17,6 +17,7 @@ const CONFIG: BoardConfig = {
   thoughts: { label: 'idea', title: 'ideas', note: null },
   flags: [],
   capture: { labels: [] },
+  asks: null,
   derived: { allFlags: ['needs-human', 'human-note', 'idea'], hotChips: ['human-note'] },
 }
 
@@ -81,6 +82,7 @@ function render(
       byId={new Map()}
       onOpenLink={noop}
       folds={{ isFolded: (_key, fallback) => fallback, setFolded: noop }}
+      onAnswer={async () => true}
     />,
   )
 }

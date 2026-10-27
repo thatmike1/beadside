@@ -146,6 +146,16 @@ A flag label such as `human-note`. When you submit a note from the board's compo
 
 A label such as `idea` for raw captures that should not clutter your active backlog. Beads carrying this label stay in a dedicated thoughts drawer and are excluded from lane counts. Set `capture.labels` to `["idea"]` and quick capture files every new bead there.
 
+### questions on beads
+
+An agent can leave a question on a bead for you to answer, in the bead's metadata rather than as a comment, so it does not drown among the others. Turn it on with an `asks` block (`key` defaults to `ask`, `title` to `decisions`):
+
+```json
+"asks": { "key": "ask", "title": "decisions", "note": "the hub asked, answer here" }
+```
+
+The agent writes the question whole, with `bd update <id> --metadata @ask.json` and a file like `{"ask": {"question": "apply or pass?", "options": [{"k": "apply", "sub": "one interview"}, {"k": "pass"}], "lean": "apply", "why": "..."}}`. `title`, `due`, `first_raised`, `last_raised` and `days_raised` are optional. The board then shows the question as a card pinned above the description, and lists every open one in a section at the top of the inbox, the longest asked first. Picking an option fills the answer box; answering sends the same note the note box sends (your author id, the note flag) and stamps the question `answered`, so it shows as answered and waiting for a session rather than open. The agent that acts on the answer removes the question with `bd update <id> --unset-metadata ask` and takes the note flag off. Closed beads drop out. Another local page can read and answer questions through its own server with `GET /api/asks` and `POST /api/issues/<id>/ask/answer` (see `docs/api.md`).
+
 ### project labels
 
 Any other label that is not a lane label, sub-label, or workflow flag automatically groups beads within a lane whenever 2 or more beads share it.

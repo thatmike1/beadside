@@ -4,6 +4,7 @@ import type { CSSProperties, ReactNode } from 'react'
 import type { BoardConfig, Issue } from '../api'
 import type { Inbox, InboxKind } from '../inbox'
 import { answerOf, daysUntouched, dueState, inboxFoldKey, isAnswerSection } from '../inbox'
+import { askOf, raisedText } from '../asks'
 import { axisOf } from '../model'
 import { axisStyle, formatShortDate, relativeTime } from '../format'
 import { Row } from './row'
@@ -58,13 +59,16 @@ function ActionRow(props: {
   hot?: boolean
   /** a reply opened this visit: dimmed, with a read mark, until the list is rebuilt */
   read?: boolean
+  /** dimmed with this mark instead of read: a question answered and waiting for a session */
+  mark?: string
   actions?: ReactNode
   list: ListProps
 }) {
   const { issue, why, hot, read, actions, list } = props
   const axis = axisOf(issue, list.config.lanes)
   const selected = issue.id === list.selected
-  const className = ['irow', selected ? 'sel' : '', read ? 'seen' : ''].filter(Boolean).join(' ')
+  const mark = props.mark ?? (read ? 'read' : null)
+  const className = ['irow', selected ? 'sel' : '', mark ? 'seen' : ''].filter(Boolean).join(' ')
   return (
     // the whole item opens the bead; the title row is its own button, the verdicts keep their clicks
     <div
@@ -86,7 +90,7 @@ function ActionRow(props: {
       />
       {why || actions ? (
         <div className="iact">
-          {read ? <span className="readmark">read</span> : null}
+          {mark ? <span className="readmark">{mark}</span> : null}
           {why ? (
             <span className={hot ? 'why hot' : 'why'} title={relativeTime(props.at, list.now) || undefined}>
               {why}
@@ -136,7 +140,38 @@ function DueActions({ issue, list }: { issue: Issue; list: ListProps }) {
   )
 }
 
+/** an open question reads as itself; an answered one says so and that a session has it next */
+function askRow(issue: Issue, list: ListProps) {
+  const ask = askOf(issue, list.config)
+  if (!ask) return <ActionRow key={issue.id} issue={issue} why="" list={list} />
+  if (ask.answered) {
+    const text = ask.answered.text.trim()
+    return (
+      <ActionRow
+        key={issue.id}
+        issue={issue}
+        why={`you answered ${formatShortDate(ask.answered.at)}${text ? `: ${text}` : ''}, waiting for a session`}
+        at={ask.answered.at}
+        mark="answered"
+        list={list}
+      />
+    )
+  }
+  const raised = raisedText(ask)
+  return (
+    <ActionRow
+      key={issue.id}
+      issue={issue}
+      why={raised ? `${ask.question} · ${raised}` : ask.question}
+      at={ask.first_raised}
+      hot={(ask.days_raised ?? 0) >= 3}
+      list={list}
+    />
+  )
+}
+
 function rowFor(kind: InboxKind, issue: Issue, list: ListProps, read = false) {
+  if (kind === 'ask') return askRow(issue, list)
   if (kind === 'reply') {
     const reply = issue.agent_reply
     const why = reply ? `${reply.name} replied ${formatShortDate(reply.at)}` : ''
@@ -199,12 +234,20 @@ export function InboxList(
       {inbox.sections.map((section) => (
         <div className={section.folded ? 'sec folded' : 'sec'} key={section.key}>
           <button
-            className={section.key === 'label' || section.key === 'due' ? 'sechead hot' : 'sechead'}
+            className={section.key === 'ask' || section.key === 'label' || section.key === 'due' ? 'sechead hot' : 'sechead'}
             aria-expanded={!section.folded}
             onClick={() => props.onToggleSection(inboxFoldKey(section.key))}
           >
             <span>{section.title}</span>
-            <span className="n">{section.rows.filter((i) => !(isAnswerSection(section.key) && inbox.read.has(i.id))).length}</span>
+            <span className="n">
+              {
+                section.rows.filter(
+                  (i) =>
+                    !(isAnswerSection(section.key) && inbox.read.has(i.id)) &&
+                    !(section.key === 'ask' && inbox.answered.has(i.id)),
+                ).length
+              }
+            </span>
             <span className="note">{section.note}</span>
           </button>
           <div className="secrule" />

@@ -160,6 +160,13 @@ export interface CaptureConfig {
   labels: string[]
 }
 
+/** questions stored on beads; null when the board config has no asks block */
+export interface AsksConfig {
+  key: string
+  title: string
+  note: string | null
+}
+
 export interface DerivedConfig {
   allFlags: string[]
   hotChips: string[]
@@ -179,6 +186,7 @@ export interface BoardConfig {
   thoughts: ThoughtsConfig | null
   flags: string[]
   capture: CaptureConfig
+  asks: AsksConfig | null
   derived: DerivedConfig
 }
 
@@ -303,6 +311,15 @@ export function postComment(
   const body: { text: string; clear?: boolean } =
     clear === undefined ? { text } : { text, clear }
   return post<IssueDetail>(`/api/issues/${encodeURIComponent(id)}/comment`, body)
+}
+
+/**
+ * answers the question stored on a bead: the same note the note box sends, then the question
+ * stamped answered. `clear` false keeps the waiting labels the note box would offer to clear
+ */
+export function answerAsk(id: string, text: string, clear?: boolean): Promise<IssueDetail> {
+  const body: { text: string; clear?: boolean } = clear === undefined ? { text } : { text, clear }
+  return post<IssueDetail>(`/api/issues/${encodeURIComponent(id)}/ask/answer`, body)
 }
 
 /** close, defer, reopen or plain status change */

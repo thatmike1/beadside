@@ -100,7 +100,7 @@ function resolved(raw: typeof FULL_CONFIG): BoardConfig {
     ]),
   ]
   const hotChips = [...new Set([raw.note.addLabel, ...raw.note.offerToClear])]
-  return { ...raw, human: null, inbox: { labels: [...raw.note.offerToClear] }, derived: { allFlags, hotChips } }
+  return { ...raw, human: null, inbox: { labels: [...raw.note.offerToClear] }, asks: null, derived: { allFlags, hotChips } }
 }
 
 function emptyConfig(): BoardConfig {
@@ -117,6 +117,7 @@ function emptyConfig(): BoardConfig {
     thoughts: null,
     flags: [],
     capture: { labels: [] },
+    asks: null,
     derived: { allFlags: [], hotChips: [] },
   }
 }

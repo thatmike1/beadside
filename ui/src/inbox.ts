@@ -1,6 +1,7 @@
 // derives the inbox (what the human can clear in one action) and the stale filter from the flat issue list
 
 import type { BoardConfig, Issue, StalePicks } from './api'
+import { askOf } from './asks'
 import { isThought } from './model'
 
 /** a bead untouched this many days is stale */
@@ -14,7 +15,7 @@ export const CLOSED_ANSWER_DAYS = 14
 
 const DAY_MS = 86_400_000
 
-export type InboxKind = 'reply' | 'closed' | 'label' | 'due' | 'stale'
+export type InboxKind = 'ask' | 'reply' | 'closed' | 'label' | 'due' | 'stale'
 
 export interface InboxSection {
   key: InboxKind
@@ -40,6 +41,8 @@ export interface Inbox {
   count: number
   /** reply rows shown as read: opened this visit, kept until the list is rebuilt */
   read: Set<string>
+  /** question rows already answered, waiting for a session to act; listed dimmed, not counted */
+  answered: Set<string>
 }
 
 // the stale beads picked for one day, kept so the pick holds when one of them leaves
@@ -227,9 +230,36 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
     .map((id) => byId.get(id))
     .filter((i): i is Issue => i !== undefined && i.status !== 'closed')
 
+  // stored questions: open ones first, the longest asked on top; answered ones after them,
+  // dimmed, until the session that acts on the answer removes the question
+  const withAsk = live.flatMap((i) => {
+    const ask = askOf(i, config)
+    return ask ? [{ issue: i, ask }] : []
+  })
+  const openAsks = withAsk
+    .filter((x) => !x.ask.answered)
+    .sort(
+      (a, b) =>
+        (b.ask.days_raised ?? 0) - (a.ask.days_raised ?? 0) ||
+        a.issue.priority - b.issue.priority ||
+        a.issue.id.localeCompare(b.issue.id),
+    )
+  const answeredAsks = withAsk
+    .filter((x) => x.ask.answered)
+    .sort((a, b) => (b.ask.answered?.at ?? '').localeCompare(a.ask.answered?.at ?? ''))
+  const answeredIds = new Set(answeredAsks.map((x) => x.issue.id))
+
   const sections: InboxSection[] = []
   const push = (key: InboxKind, title: string, note: string, rows: Issue[]) => {
     if (rows.length) sections.push({ key, title, note, rows, folded: opts.isFolded?.(inboxFoldKey(key), false) ?? false })
+  }
+  if (config.asks) {
+    push(
+      'ask',
+      config.asks.title,
+      config.asks.note ?? 'a question stored on the bead, answer it there',
+      [...openAsks, ...answeredAsks].map((x) => x.issue),
+    )
   }
   push('reply', 'replies', 'an agent answered your note', replies)
   push('closed', 'answered, closed', 'your note got its answer and the bead closed', closedAnswers)
@@ -244,7 +274,8 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
   const counted = new Set<string>()
   for (const section of sections) {
     for (const issue of section.rows) {
-      if (!(isAnswerSection(section.key) && read.has(issue.id))) counted.add(issue.id)
+      const quiet = (isAnswerSection(section.key) && read.has(issue.id)) || (section.key === 'ask' && answeredIds.has(issue.id))
+      if (!quiet) counted.add(issue.id)
       if (!laidOut.has(issue.id)) {
         laidOut.add(issue.id)
         layout.push(issue.id)
@@ -254,5 +285,5 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
       order.push(issue.id)
     }
   }
-  return { sections, order, layout, count: counted.size, read }
+  return { sections, order, layout, count: counted.size, read, answered: answeredIds }
 }

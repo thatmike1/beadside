@@ -29,6 +29,8 @@ import { useCommentOrder } from '../use-comment-order'
 import { MarkdownText } from './markdown'
 import { WriteRow } from './write-row'
 import { NoteBox } from './note-box'
+import { AskCard } from './ask-card'
+import { askOf } from '../asks'
 
 /** where a search hit points inside the open bead */
 export interface RevealTarget {
@@ -67,6 +69,8 @@ interface DetailPaneProps {
   onOpenLink: (id: string) => void
   /** the index's fold store; the description folds through it too */
   folds: Folds
+  /** answers the bead's stored question; resolves false when it failed */
+  onAnswer: (text: string) => Promise<boolean>
 }
 
 /** fold key of the description, beside the index sections in the same store */
@@ -248,6 +252,7 @@ export function DetailPane(props: DetailPaneProps) {
   const replies = repliesAfterNote(comments)
   const note = latestNote(comments)
   const noteRead = detailReady && !unread ? (detail?.note_read ?? null) : null
+  const ask = askOf(full, config)
 
   return (
     <main className="read" ref={readRef} style={axisStyle(axis, config) as CSSProperties}>
@@ -325,6 +330,8 @@ export function DetailPane(props: DetailPaneProps) {
               </span>
             ) : null}
           </div>
+
+          {ask ? <AskCard key={full.id} ask={ask} short={short} config={config} onAnswer={props.onAnswer} /> : null}
 
           {unread ? (
             <button

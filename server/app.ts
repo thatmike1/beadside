@@ -8,7 +8,8 @@ import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { agentReply, classifyAuthor, humanNoteAt, defaultHuman, type HumanIdentity } from './authors'
-import { BdError, type BeadsClient, type Issue, type IssueWithComments, type Status } from './bd'
+import { answeredAsk, askEntries, assertVia, parseAsk, rawAsk } from './asks'
+import { assertId, BdError, type BeadsClient, type Issue, type IssueWithComments, type Status } from './bd'
 import { resolveConfig, type ResolvedBoardConfig } from './config'
 import {
   assertDay,
@@ -380,6 +381,44 @@ export function createBoard(config: AppConfig): Board {
     if (typeof due !== 'string') throw new BdError('due must be a string')
     const issue = await serialise(() => client.setDue(id, due))
     return c.json({ issue })
+  })
+
+  // questions stored on beads (asks in .beadside.json): every open one, plus the wanted ids in any
+  // state. a page on another local port reads this through its own server, never cross-origin
+  app.get('/api/asks', async (c) => {
+    const asks = boardConfig.asks
+    if (!asks) throw new BdError('asks are off: no asks block in the board config', 404)
+    const wanted = (c.req.query('ids') ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean)
+    if (wanted.length > 200) throw new BdError('at most 200 ids')
+    for (const id of wanted) assertId(id)
+    const corpus = await loadCorpus(searchAge())
+    return c.json({ key: asks.key, asks: askEntries(corpus, asks.key, repo.name, wanted) })
+  })
+
+  // answers a stored question: the note the note box would send (author, note flag), then the
+  // question rewritten with its answer, read fresh so nothing an agent wrote meanwhile is lost
+  app.post('/api/issues/:id/ask/answer', async (c) => {
+    const asks = boardConfig.asks
+    if (!asks) throw new BdError('asks are off: no asks block in the board config', 404)
+    const id = assertId(c.req.param('id'))
+    const body = await readBody(c)
+    const text = body['text']
+    if (typeof text !== 'string' || !text.trim()) throw new BdError('text must be a non-empty string')
+    const via = assertVia(body['via'])
+    // like the note box, an answer clears the waiting labels unless told not to: it is the call
+    const clear = body['clear']
+    if (clear !== undefined && typeof clear !== 'boolean') throw new BdError('clear must be a boolean')
+    const clearLabels = clear === false ? [] : boardConfig.note.offerToClear
+    await serialise(async () => {
+      const raw = rawAsk((await client.issue(id))['metadata'], asks.key)
+      if (!raw || !parseAsk({ [asks.key]: raw }, asks.key)) throw new BdError(`${id} has no question stored`, 409)
+      await client.comment(id, text, { addLabel: boardConfig.note.addLabel, clearLabels })
+      await client.setMetadata(id, asks.key, answeredAsk(raw, { text, by: human.id, via, at: new Date() }))
+    })
+    return c.json(await detail(id))
   })
 
   // the inbox's memory, shared by every board on this beads database through `bd kv`

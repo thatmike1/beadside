@@ -1075,6 +1075,131 @@ h2.sub {
   color: var(--ink);
   background: var(--fill);
 }
+/* ---------- a question stored on the bead, pinned above the description ---------- */
+.ask {
+  margin-top: 16px;
+  max-width: 78ch;
+  padding: 13px 18px 14px;
+  border-radius: 5px;
+  background: var(--unread-bg);
+  box-shadow: inset 2px 0 0 var(--unread-rule);
+}
+.ask.answered {
+  background: var(--read-bg);
+  box-shadow: none;
+}
+.askhead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.askhead .hot {
+  color: var(--signal-ink);
+  font-weight: 560;
+}
+.asklabel {
+  color: var(--signal-ink);
+  font-weight: 620;
+  letter-spacing: 0.01em;
+}
+.ask.answered .asklabel,
+.askwait {
+  color: var(--read-ink);
+}
+.askwait {
+  margin-left: auto;
+}
+.askq {
+  margin: 4px 0 0;
+  font-size: 1.08em;
+  font-weight: 560;
+  color: var(--ink);
+  line-height: 1.4;
+}
+.askwhy {
+  margin: 4px 0 0;
+  font-size: 0.94em;
+  color: var(--ink-2);
+}
+.askanswer {
+  margin: 6px 0 0;
+  color: var(--prose);
+  white-space: pre-wrap;
+}
+.askopts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 11px;
+}
+.askopt {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+  align-items: baseline;
+  column-gap: 7px;
+  text-align: left;
+  max-width: 36ch;
+  padding: 5px 11px 6px;
+  border-radius: 4px;
+  background: var(--bg-read);
+  box-shadow: inset 0 0 0 1px var(--rule);
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.askopt:hover {
+  box-shadow: inset 0 0 0 1px rgb(var(--tint) / 0.24);
+}
+.askopt.on {
+  box-shadow: inset 0 0 0 1.5px var(--ink);
+}
+.askopt b {
+  font-weight: 620;
+  color: var(--ink);
+}
+.asklean {
+  font-size: 11px;
+  color: var(--signal-ink);
+}
+.asksub {
+  grid-column: 1 / -1;
+  font-size: 12.25px;
+  color: var(--ink-3);
+}
+.ask textarea {
+  display: block;
+  width: 100%;
+  margin-top: 11px;
+  min-height: 52px;
+  resize: vertical;
+  background: var(--bg-read);
+  border: 0;
+  border-radius: 4px;
+  padding: 9px 12px;
+  outline: 0;
+  line-height: 1.5;
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+.ask textarea:focus {
+  box-shadow: inset 0 0 0 1px rgb(var(--tint) / 0.3);
+}
+.ask textarea::placeholder {
+  color: var(--ink-3);
+}
+.askrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 9px;
+}
+.askrow .btn {
+  margin-left: auto;
+  flex: 0 0 auto;
+}
+
 /* the one-line pointer above the description down to the unread note */
 .unreadjump {
   display: inline-block;

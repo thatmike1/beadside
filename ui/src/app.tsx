@@ -31,6 +31,7 @@ const EMPTY_CONFIG: BoardConfig = {
   thoughts: null,
   flags: [],
   capture: { labels: [] },
+  asks: null,
   derived: { allFlags: [], hotChips: [] },
   human: null,
 }
@@ -551,6 +552,33 @@ export function App() {
       })
   }, [current, session, drafts, clears, sending, qc, applyIssue, toaster, repoName, refresh, config])
 
+  // answering a stored question: the server writes the note and stamps the question; the card
+  // keeps its text until bd is done, and gets it back when the write fails
+  const onAnswer = useCallback(
+    async (text: string): Promise<boolean> => {
+      if (!current) return false
+      const id = current.id
+      const presentClears = config.note.offerToClear.filter((l) => current.labels.includes(l))
+      const clear = presentClears.length > 0 ? (clears[id] ?? true) : undefined
+      try {
+        const detail = await api.answerAsk(id, text, clear)
+        qc.setQueryData<IssueDetail>(['issue', id], detail)
+        applyIssue(detail.issue)
+        let msg = `answered ${shortId(id, repoName)}`
+        if (config.note.addLabel) msg += `, ${config.note.addLabel} set`
+        if (clear) msg += `, ${presentClears.join(', ')} cleared`
+        toaster.show(msg)
+        return true
+      } catch (error: unknown) {
+        toaster.fail(error instanceof Error ? error.message : 'answer failed')
+        return false
+      } finally {
+        refresh(id)
+      }
+    },
+    [current, config, clears, qc, applyIssue, repoName, toaster, refresh],
+  )
+
   const onCaptureSubmit = useCallback(() => {
     const title = capture.trim()
     if (!title) return
@@ -813,6 +841,7 @@ export function App() {
           byId={board.byId}
           onOpenLink={openLink}
           folds={folds}
+          onAnswer={onAnswer}
         />
       </div>
       <Toast toast={toaster.toast} onUndo={toaster.runUndo} onDismiss={toaster.dismiss} />

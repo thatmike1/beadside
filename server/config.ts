@@ -79,6 +79,19 @@ export interface ResolvedCaptureConfig {
   labels: string[]
 }
 
+export interface AsksConfig {
+  key?: string
+  title?: string | null
+  note?: string | null
+}
+
+export interface ResolvedAsksConfig {
+  /** the metadata key a stored question sits under */
+  key: string
+  title: string
+  note: string | null
+}
+
 export interface ResolvedDerivedConfig {
   allFlags: string[]
   hotChips: string[]
@@ -102,6 +115,7 @@ export interface BoardConfig {
   thoughts?: ThoughtsConfig
   flags?: string[]
   capture?: CaptureConfig
+  asks?: AsksConfig | null
 }
 
 export interface ResolvedBoardConfig {
@@ -118,8 +132,13 @@ export interface ResolvedBoardConfig {
   thoughts: ResolvedThoughtsConfig | null
   flags: string[]
   capture: ResolvedCaptureConfig
+  /** questions stored on beads, answered from the board; null keeps the feature off */
+  asks: ResolvedAsksConfig | null
   derived: ResolvedDerivedConfig
 }
+
+/** what a metadata key may look like: it goes to bd inside a JSON object, never as a flag */
+const METADATA_KEY = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/
 
 export class ConfigError extends Error {
   readonly field?: string
@@ -322,6 +341,22 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     capture = { labels: [] }
   }
 
+  let asks: ResolvedAsksConfig | null = null
+  if (obj['asks'] !== undefined && obj['asks'] !== null) {
+    if (typeof obj['asks'] !== 'object' || Array.isArray(obj['asks'])) {
+      throw new ConfigError('asks must be an object', 'asks')
+    }
+    const a = obj['asks'] as Record<string, unknown>
+    const key = a['key'] === undefined || a['key'] === null ? 'ask' : validateString(a['key'], 'asks.key')
+    if (!METADATA_KEY.test(key)) {
+      throw new ConfigError('asks.key must be 1-64 letters, digits, _ . or -, not starting with . or -', 'asks.key')
+    }
+    const title =
+      a['title'] !== undefined && a['title'] !== null ? validateString(a['title'], 'asks.title') : 'decisions'
+    const note = validateOptionalString(a['note'], 'asks.note')
+    asks = { key, title, note }
+  }
+
   const allFlagsSet = new Set<string>([
     ...waiting.labels,
     ...(noteConfig.addLabel ? [noteConfig.addLabel] : []),
@@ -354,6 +389,7 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     thoughts,
     flags,
     capture,
+    asks,
     derived,
   }
 }

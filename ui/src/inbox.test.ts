@@ -17,6 +17,7 @@ const CONFIG: BoardConfig = {
   thoughts: { label: 'idea', title: 'ideas', note: null },
   flags: [],
   capture: { labels: [] },
+  asks: null,
   derived: { allFlags: ['needs-human', 'discuss', 'human-note', 'idea'], hotChips: ['human-note', 'needs-human'] },
 }
 
