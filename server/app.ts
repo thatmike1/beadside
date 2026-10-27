@@ -8,7 +8,7 @@ import type { Context } from 'hono'
 import { streamSSE } from 'hono/streaming'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { agentReply, classifyAuthor, humanNoteAt, defaultHuman, type HumanIdentity } from './authors'
-import { answeredAsk, askEntries, assertVia, parseAsk, rawAsk } from './asks'
+import { answeredAsk, askEntries, assertVia, parseAsk, postedAlready, raisedSince, rawAsk } from './asks'
 import { assertId, BdError, type BeadsClient, type Issue, type IssueWithComments, type Status } from './bd'
 import { resolveConfig, type ResolvedBoardConfig } from './config'
 import {
@@ -415,8 +415,15 @@ export function createBoard(config: AppConfig): Board {
     await serialise(async () => {
       const raw = rawAsk((await client.issue(id))['metadata'], asks.key)
       if (!raw || !parseAsk({ [asks.key]: raw }, asks.key)) throw new BdError(`${id} has no question stored`, 409)
-      await client.comment(id, text, { addLabel: boardConfig.note.addLabel, clearLabels })
-      await client.setMetadata(id, asks.key, answeredAsk(raw, { text, by: human.id, via, at: new Date() }))
+      // a page from an older day may show a question a later hub reworded; it answers on that day's page
+      const later = raisedSince(raw, body['raised'])
+      if (later) throw new BdError(`${id}: a later hub raised this question again on ${later}, answer it there`, 412)
+      const now = new Date()
+      // a retry after the stamp failed finds its note already there and only stamps
+      if (!postedAlready(await client.comments(id), human.id, text, now)) {
+        await client.comment(id, text, { addLabel: boardConfig.note.addLabel, clearLabels })
+      }
+      await client.setMetadata(id, asks.key, answeredAsk(raw, { text, by: human.id, via, at: now }))
     })
     return c.json(await detail(id))
   })

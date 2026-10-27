@@ -172,7 +172,7 @@ interface SessionInfo {
 | GET | `/api/events` | | Server-sent events, same-origin only. `state` (`{ live: boolean }`) on connect and whenever live updates start or stop; `changed` (`{}`) when the ledger moved and lists should be refetched. See Live updates |
 | GET | `/api/asks?ids=<id,id>` | | `{ key: string, asks: AskEntry[] }`: every bead that is not closed and carries a question under `asks.key`, plus each id in `ids` (full or short, at most 200) whatever its state, so a page that raised a question can tell it closed. `AskEntry` is `{ id, title, status, closed_at, ask: Ask \| null }`, `Ask` as in `server/asks.ts`. 404 without an `asks` block in the config |
 | POST | `/api/issues/:id/comment` | `{ text: string, clear?: boolean }` | `IssueDetail` |
-| POST | `/api/issues/:id/ask/answer` | `{ text: string, via?: 'beadside' \| 'hub', clear?: boolean }` | `IssueDetail`; answers the stored question. 409 when the bead has none, 404 without an `asks` block |
+| POST | `/api/issues/:id/ask/answer` | `{ text: string, via?: 'beadside' \| 'hub', clear?: boolean, raised?: string }` | `IssueDetail`; answers the stored question. 409 when the bead has none, 404 without an `asks` block, 412 when `raised` (the day the page showed the question) is older than the question's `last_raised`. A retry finds the human's identical note from the last 15 minutes and only stamps the question |
 | POST | `/api/issues/:id/status` | `{ status: Status, reason?: string, until?: string }` | `{ issue }` |
 | POST | `/api/issues/:id/priority` | `{ priority: number }` | `{ issue }` |
 | POST | `/api/issues/:id/labels` | `{ add?: string[], remove?: string[] }` | `{ issue }` |

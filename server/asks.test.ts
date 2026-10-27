@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeAll, describe, expect, it } from 'vitest'
 import { createApp } from './app'
-import { answeredAsk, askEntries, assertVia, MAX_ANSWER_TEXT, parseAsk } from './asks'
+import { answeredAsk, askEntries, assertVia, MAX_ANSWER_TEXT, parseAsk, postedAlready } from './asks'
 import { BeadsClient, type IssueWithComments, type RunResult } from './bd'
 import { resolveConfig } from './config'
 
@@ -137,7 +137,7 @@ describe('asks routes', () => {
   const ok = (stdout: string): RunResult => ({ stdout, stderr: '', code: 0 })
 
   /** an app over one bead whose metadata the canned bd keeps, so a write shows on the next read */
-  function appFor(asks: unknown, metadata: Record<string, unknown> | null = { ask: ASK }) {
+  function appFor(asks: unknown, metadata: Record<string, unknown> | null = { ask: ASK }, comments: unknown[] = []) {
     const calls: string[][] = []
     let meta = metadata
     let labels = ['needs-human']
@@ -149,7 +149,7 @@ describe('asks routes', () => {
       calls.push(args)
       if (args[0] === 'export') return ok(`${JSON.stringify({ _type: 'issue', ...record() })}\n`)
       if (args[0] === 'show') return ok(JSON.stringify([record()]))
-      if (args[0] === 'comments' && args[1] !== 'add') return ok('[]')
+      if (args[0] === 'comments' && args[1] !== 'add') return ok(JSON.stringify(comments))
       if (args[0] === 'update') {
         for (const arg of args) {
           if (arg.startsWith('--metadata=')) meta = { ...meta, ...(JSON.parse(arg.slice('--metadata='.length)) as object) }
@@ -232,6 +232,28 @@ describe('asks routes', () => {
     const { app, meta } = appFor({ key: 'hubask' }, { hubask: ASK, quick: { a: 1 } })
     expect((await app.request(answer({ text: 'pass' }))).status).toBe(200)
     expect(meta()).toMatchObject({ quick: { a: 1 }, hubask: { answered: { text: 'pass', via: 'beadside' } } })
+  })
+
+  it('refuses an answer from a page older than the question, writing nothing', async () => {
+    const { app, calls } = appFor({}, { ask: { ...ASK, last_raised: '2026-10-28' } })
+    const res = await app.request(answer({ text: 'pass', raised: '2026-10-27' }))
+    expect(res.status).toBe(412)
+    expect(calls.some((a) => a[0] === 'update' || a[1] === 'add')).toBe(false)
+    expect((await app.request(answer({ text: 'pass', raised: 'yesterday' }))).status).toBe(400)
+    expect((await app.request(answer({ text: 'pass', raised: '2026-10-28' }))).status).toBe(200)
+  })
+
+  it('a retry whose note already landed only stamps the question', async () => {
+    const note = { id: 'c1', issue_id: 'repo-abc', author: 'human:tester', text: 'pass', created_at: new Date().toISOString() }
+    const { app, calls, meta } = appFor({}, { ask: ASK }, [note])
+    const res = await app.request(answer({ text: 'pass' }))
+    expect(res.status).toBe(200)
+    expect(calls.filter((a) => a[0] === 'comments' && a[1] === 'add')).toHaveLength(0)
+    expect(postedAlready([note], 'human:tester', ' pass ', new Date())).toBe(true)
+    expect(postedAlready([note], 'human:tester', 'apply', new Date())).toBe(false)
+    expect(postedAlready([note], 'agent:claude', 'pass', new Date())).toBe(false)
+    expect(postedAlready([note], 'human:tester', 'pass', new Date(Date.now() + 20 * 60_000))).toBe(false)
+    expect((meta()?.['ask'] as { answered: { text: string } }).answered.text).toBe('pass')
   })
 
   it('refuses a bead with no question, an empty answer and an unknown via, writing nothing', async () => {

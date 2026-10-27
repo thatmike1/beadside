@@ -1,7 +1,7 @@
 // questions stored on beads: an agent writes one under a metadata key (asks.key in .beadside.json),
 // the human answers it from the board, and the agent that acts on the answer removes the key.
 // the board reads the shape leniently, since agents write it by hand or from a script
-import { BdError, type Issue, type IssueWithComments } from './bd'
+import { BdError, type Comment, type Issue, type IssueWithComments } from './bd'
 
 export interface AskOption {
   k: string
@@ -120,6 +120,26 @@ export function assertVia(value: unknown): AnswerVia {
     throw new BdError(`via must be one of ${VIAS.join(', ')}`)
   }
   return value as AnswerVia
+}
+
+/**
+ * true when `author` already left `text` as their latest comment within `windowMs`: the answer's note
+ * landed but the stamp after it failed, so a retry stamps the question without a second note
+ */
+export function postedAlready(comments: Comment[], author: string, text: string, now: Date, windowMs = 15 * 60_000): boolean {
+  const mine = comments.filter((c) => c.author === author)
+  const last = mine[mine.length - 1]
+  if (!last || last.text.trim() !== text.trim()) return false
+  const at = Date.parse(last.created_at)
+  return Number.isFinite(at) && now.getTime() - at <= windowMs
+}
+
+/** the day a later hub raised the question again, when `raised` (the day the page showed it) is older */
+export function raisedSince(raw: Record<string, unknown>, raised: unknown): string | null {
+  if (raised === undefined || raised === null) return null
+  if (typeof raised !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(raised)) throw new BdError('raised must be a YYYY-MM-DD day')
+  const last = raw['last_raised']
+  return typeof last === 'string' && last.slice(0, 10) > raised ? last.slice(0, 10) : null
 }
 
 /** the stored question with its answer filled in; every other field is kept as written */
