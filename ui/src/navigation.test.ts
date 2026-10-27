@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { isReadingState, openReading, writeSelectionHash } from './navigation'
+import { beadFromHash, isReadingState, openReading, writeSelectionHash } from './navigation'
 
 afterEach(() => vi.unstubAllGlobals())
 
@@ -44,5 +44,22 @@ describe('phone reading view', () => {
     expect(entries.map((e) => e.url)).toEqual(['#b', '#b'])
     expect(entries.map((e) => isReadingState(e.state))).toEqual([false, true])
     expect(isReadingState({ other: 'reading' })).toBe(false)
+  })
+})
+
+describe('beadFromHash', () => {
+  const ids = ['repo-76w7', 'repo-abc']
+
+  it('waits for the repo name before reading a short id, instead of giving up', () => {
+    // the issues landed before the session: this used to come back as no bead, an empty pane
+    expect(beadFromHash('#76w7', ids, null)).toEqual({ wait: true })
+    expect(beadFromHash('#76w7', ids, 'repo')).toEqual({ wait: false, id: 'repo-76w7' })
+  })
+
+  it('reads a full id at once, and an empty or unknown hash as no bead', () => {
+    expect(beadFromHash('#repo-abc', ids, null)).toEqual({ wait: false, id: 'repo-abc' })
+    expect(beadFromHash('', ids, null)).toEqual({ wait: false, id: null })
+    expect(beadFromHash('#zzz', ids, 'repo')).toEqual({ wait: false, id: null })
+    expect(beadFromHash('#repo%2Dabc', ids, 'repo')).toEqual({ wait: false, id: 'repo-abc' })
   })
 })

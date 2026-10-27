@@ -13,7 +13,7 @@ import { Toast } from './components/toast'
 import { useToast } from './use-toast'
 import { useFolds } from './use-folds'
 import { useLive } from './use-live'
-import { isReadingState, openReading, writeSelectionHash } from './navigation'
+import { beadFromHash, isReadingState, openReading, writeSelectionHash } from './navigation'
 import { useNarrow } from './use-narrow'
 import { useFont } from './use-font'
 import { useTheme } from './use-theme'
@@ -234,21 +234,22 @@ export function App() {
   const firstPaint = useRef(true)
   useEffect(() => {
     if (selected || !issues?.length) return
-    const wanted = firstPaint.current ? decodeURIComponent(window.location.hash.slice(1)) : ''
+    // the issues can land before the session that names the repo; a short hash waits for it
+    const found = firstPaint.current
+      ? beadFromHash(window.location.hash, issues.map((i) => i.id), session ? repoName : null)
+      : { wait: false as const, id: null }
+    if (found.wait) return
     firstPaint.current = false
-    const match = wanted
-      ? issues.find((i) => i.id === wanted || shortId(i.id, repoName) === wanted)
-      : undefined
-    if (match) {
-      reveal(match.id)
-      select(match.id, false)
-      setOpened(match.id)
+    if (found.id) {
+      reveal(found.id)
+      select(found.id, false)
+      setOpened(found.id)
       return
     }
     if (view === 'inbox') return
     const next = nav.order[0] ?? null
     if (next) select(next, false)
-  }, [selected, issues, nav.order, view, repoName, select, reveal])
+  }, [selected, issues, session, nav.order, view, repoName, select, reveal])
 
   // opening a bead marks its answer seen, an agent reply or a close after the human's note. the row holds its place while open, then drops to
   // the bottom of replies, marked read, until the list is rebuilt
