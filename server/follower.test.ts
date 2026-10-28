@@ -19,7 +19,8 @@ done
 exit $(cat "$dir/code")
 `
 
-describe('nodeFollower', () => {
+// the stand-in is a sh script found through a colon-separated PATH, so this runs off windows only
+describe.skipIf(process.platform === 'win32')('nodeFollower', () => {
   let dir: string
   let path: string | undefined
 
