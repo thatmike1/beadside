@@ -19,10 +19,24 @@ describe('search result highlighting and lane presentation', () => {
     ])
   })
 
-  // ccChat-general-2ymv: advancing by term length skips overlapping occurrences.
-  it.fails('highlights overlapping occurrences of the same search term', () => {
+  it('highlights overlapping occurrences of the same search term', () => {
     expect(highlightRuns('banana banana', ['ana', 'ban'])).toEqual([
       { text: 'banana', hit: true }, { text: ' ', hit: false }, { text: 'banana', hit: true },
+    ])
+    expect(highlightRuns('xaaaax', ['aa'])).toEqual([
+      { text: 'x', hit: false }, { text: 'aaaa', hit: true }, { text: 'x', hit: false },
+    ])
+  })
+
+  it('merges overlapping and adjacent matches of different terms into one run', () => {
+    expect(highlightRuns('abcdef', ['abc', 'bcd'])).toEqual([
+      { text: 'abcd', hit: true }, { text: 'ef', hit: false },
+    ])
+    expect(highlightRuns('xabcdefx', ['abc', 'def'])).toEqual([
+      { text: 'x', hit: false }, { text: 'abcdef', hit: true }, { text: 'x', hit: false },
+    ])
+    expect(highlightRuns('a beadside b', ['side', 'beadside', 'ead'])).toEqual([
+      { text: 'a ', hit: false }, { text: 'beadside', hit: true }, { text: ' b', hit: false },
     ])
   })
 

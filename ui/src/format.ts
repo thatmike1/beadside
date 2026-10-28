@@ -137,7 +137,8 @@ export function highlightRuns(text: string, terms: string[]): { text: string; hi
     let at = folded.indexOf(term)
     while (at >= 0) {
       marks.fill(true, at, at + term.length)
-      at = folded.indexOf(term, at + term.length)
+      // step one unit so overlapping occurrences (ana in banana) are all marked
+      at = folded.indexOf(term, at + 1)
     }
   }
   const runs: { text: string; hit: boolean }[] = []
