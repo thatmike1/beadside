@@ -109,7 +109,8 @@ function stringArray(value: unknown, what: string): string[] {
 /** how long a search may reuse the last `bd export` before reading the ledger again */
 const CORPUS_MAX_AGE_MS = 5_000
 const MAX_SEARCH_LIMIT = 500
-const RECONCILE_MS = 120_000
+// a reconcile on an unchanged embedded store costs a file read, not a bd run; see storeStamp
+const RECONCILE_MS = 30_000
 const KEEPALIVE_MS = 25_000
 
 interface CorpusEntry {
@@ -138,6 +139,8 @@ export function createBoard(config: AppConfig): Board {
   let cache: CorpusEntry | null = null
   let inflight: { generation: number; promise: Promise<CorpusEntry> } | null = null
   let generation = 0
+  // the store as the last finished export saw it, so a reconcile can skip an export that would match
+  let exportedStamp: string | null = null
   const invalidate = () => {
     generation += 1
     cache = null
@@ -145,10 +148,12 @@ export function createBoard(config: AppConfig): Board {
   const exportCorpus = (): Promise<CorpusEntry> => {
     if (inflight && inflight.generation === generation) return inflight.promise
     const started = generation
+    const stamp = client.stamp()
     const promise = client
       .corpus()
       .then((corpus) => {
         const entry = { at: Date.now(), corpus, fingerprint: fingerprintOf(corpus) }
+        exportedStamp = stamp
         if (started === generation) cache = entry
         return entry
       })
@@ -174,6 +179,11 @@ export function createBoard(config: AppConfig): Board {
   const liveOptions = config.live === undefined || config.live === false ? null : config.live
   let announced: string | null = null
   const refresh = async (always: boolean) => {
+    if (!always && announced !== null) {
+      // nothing written since the last export: a sync or another clone's work would have moved it
+      const stamp = client.stamp()
+      if (stamp !== null && stamp === exportedStamp) return
+    }
     invalidate()
     try {
       const { fingerprint } = await exportCorpus()
@@ -413,17 +423,22 @@ export function createBoard(config: AppConfig): Board {
     if (clear !== undefined && typeof clear !== 'boolean') throw new BdError('clear must be a boolean')
     const clearLabels = clear === false ? [] : boardConfig.note.offerToClear
     await serialise(async () => {
-      const raw = rawAsk((await client.issue(id))['metadata'], asks.key)
+      const { issue, comments } = await client.issueWithComments(id)
+      const raw = rawAsk(issue['metadata'], asks.key)
       if (!raw || !parseAsk({ [asks.key]: raw }, asks.key)) throw new BdError(`${id} has no question stored`, 409)
       // a page from an older day may show a question a later hub reworded; it answers on that day's page
       const later = raisedSince(raw, body['raised'])
       if (later) throw new BdError(`${id}: a later hub raised this question again on ${later}, answer it there`, 412)
       const now = new Date()
       // a retry after the stamp failed finds its note already there and only stamps
-      if (!postedAlready(await client.comments(id), human.id, text, now)) {
-        await client.comment(id, text, { addLabel: boardConfig.note.addLabel, clearLabels })
-      }
-      await client.setMetadata(id, asks.key, answeredAsk(raw, { text, by: human.id, via, at: now }))
+      const answered = answeredAsk(raw, { text, by: human.id, via, at: now })
+      if (!postedAlready(comments, human.id, text, now)) {
+        await client.comment(id, text, {
+          addLabel: boardConfig.note.addLabel,
+          clearLabels,
+          metadata: { key: asks.key, value: answered },
+        })
+      } else await client.setMetadata(id, asks.key, answered)
     })
     return c.json(await detail(id))
   })
@@ -463,9 +478,10 @@ export function createBoard(config: AppConfig): Board {
 
   /** issue plus its comments, the two joins, and when the human's latest note was read */
   async function detail(id: string) {
-    const issue: Issue = await client.issue(id)
-    const [comments, sessions, notes, events] = await Promise.all([
-      client.comments(id),
+    // one bd read for the issue and its thread: bd processes queue on the store's lock, so
+    // running them side by side is slower than one after the other
+    const { issue, comments } = await client.issueWithComments(id)
+    const [sessions, notes, events] = await Promise.all([
       sessionsFor(id, agentsview),
       notesFor(id, repo.path, boardConfig.notesDir),
       // a bd without `history --events` only costs the marker its best source

@@ -185,9 +185,9 @@ interface SessionInfo {
 
 ## Live updates
 
-With the beads events journal on (`bd config set events-journal true`, bd 1.3.0 or newer), the server reads the journal with a one-shot `bd events tail --since <n>` every 3 seconds. Not `--follow`: that child holds the embedded Dolt lock almost without a break and starves `bd sync`. A burst of journal records triggers one `bd export`, and `/api/events` sends `changed`. Records are only a trigger: they carry no comment or dependency counts, so the export stays the one source of truth. While live, `/api/issues`, `/api/search` and `/api/issue-ids` read that cached export instead of exporting per request.
+With the beads events journal on (`bd config set events-journal true`, bd 1.3.0 or newer), the server reads the journal with a one-shot `bd events tail --since <n>`. With an embedded Dolt store it first looks at the store's files once a second (the manifest's content and the size of every file under `noms`, which reads leave alone and every write changes) and runs the tail only when they moved, at most once every 3 seconds, so an idle board spawns no `bd`; without an embedded store it reads every 3 seconds. Not `--follow`: that child holds the embedded Dolt lock almost without a break and starves `bd sync`. A burst of journal records triggers one `bd export`, and `/api/events` sends `changed`. Records are only a trigger: they carry no comment or dependency counts, so the export stays the one source of truth. While live, `/api/issues`, `/api/search` and `/api/issue-ids` read that cached export instead of exporting per request.
 
-The journal does not see rows that arrive by `bd dolt pull` or `bd sync`, so a live server also re-exports every 2 minutes and sends `changed` only when the export differs from the last one it announced.
+The journal does not see rows that arrive by `bd dolt pull` or `bd sync`, so a live server also reconciles every 30 seconds: it re-exports only when the store's files moved since the last export, and sends `changed` only when the export differs from the last one it announced.
 
 With the journal off, a bd without it, or a follower that keeps exiting, `state` reports `live: false`, lists re-export on every read, and the UI polls every 20 seconds as before.
 

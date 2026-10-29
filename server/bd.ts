@@ -1,8 +1,8 @@
 // the only place in beadside that runs `bd`. every method maps to one fixed
 // argument shape; nothing the client sends ever becomes a flag.
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, readFileSync } from 'node:fs'
-import { extname, win32 } from 'node:path'
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
+import { extname, join, win32 } from 'node:path'
 
 export type Status = 'open' | 'in_progress' | 'blocked' | 'deferred' | 'pinned' | 'closed'
 
@@ -262,20 +262,76 @@ export type Follower = (since: number, handlers: FollowHandlers) => FollowHandle
 
 /** quiet time between two reads of the journal */
 export const FOLLOW_POLL_MS = 3_000
+/** how often the follower looks at the store files for a write it has not read yet */
+export const STORE_CHECK_MS = 1_000
 
 /**
- * follows the journal with one `bd events tail --since <n>` at a time, each started
- * `pollMs` after the last one exits, and splits stdout into lines. not `--follow`: that
- * child holds the embedded dolt lock almost without a break, and `bd sync` (or any other
- * bd) waits on it until its timeout. a read takes about 0.2 s and waits its turn behind a
- * sync. a read that exits nonzero ends the follow, as a `--follow` child dying would.
+ * what an embedded dolt store looks like on disk, as a string that changes on every write and
+ * on no read: the manifest's content plus the name and size of every file under each
+ * database's `noms`. reads rewrite the manifest and the chunk journal in place, so their
+ * mtimes move without a write and only content and sizes say anything. null when the repo
+ * has no embedded store (server mode, a bd that lays it out differently): callers then read
+ * the journal on a timer as before.
  */
-export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS, bd: BdCommand = resolveBd()): Follower {
+export function storeStamp(repo: string): string | null {
+  const root = join(repo, '.beads', 'embeddeddolt')
+  let databases: string[]
+  try {
+    databases = readdirSync(root).sort()
+  } catch {
+    return null
+  }
+  const parts: string[] = []
+  for (const database of databases) {
+    const noms = join(root, database, '.dolt', 'noms')
+    let names: string[]
+    try {
+      names = readdirSync(noms).sort()
+    } catch {
+      continue
+    }
+    for (const name of names) {
+      const path = join(noms, name)
+      try {
+        if (name === 'manifest') parts.push(`${database}/manifest ${readFileSync(path, 'utf8')}`)
+        else {
+          const stat = statSync(path)
+          if (stat.isFile()) parts.push(`${database}/${name} ${stat.size}`)
+        }
+      } catch {
+        // a table file gc removed between the listing and the stat; the next look sees the new set
+      }
+    }
+  }
+  return parts.some((part) => part.includes('/manifest ')) ? parts.join('\n') : null
+}
+
+/**
+ * follows the journal with one `bd events tail --since <n>` at a time, and splits stdout into
+ * lines. not `--follow`: that child holds the embedded dolt lock almost without a break, and
+ * `bd sync` (or any other bd) waits on it until its timeout. a read takes about 0.2 s of a core
+ * and waits its turn behind a sync. a read that exits nonzero ends the follow, as a `--follow`
+ * child dying would.
+ *
+ * with an embedded store the follower looks at its files every `checkMs` and runs a read only
+ * when they changed since the last one, at most one per `pollMs`; an idle board spawns no bd.
+ * without a stamp it reads every `pollMs` after the last read exits.
+ */
+export function nodeFollower(
+  repo: string,
+  pollMs = FOLLOW_POLL_MS,
+  bd: BdCommand = resolveBd(),
+  stamp: () => string | null = () => storeStamp(repo),
+  checkMs = STORE_CHECK_MS,
+): Follower {
   return (since, handlers) => {
     let seq = since
     let stopped = false
     let child: ReturnType<typeof spawn> | null = null
     let timer: ReturnType<typeof setTimeout> | null = null
+    // the store as the last read saw it, and when that read ended
+    let readStamp: string | null = null
+    let lastEnd = 0
     const emit = (line: string) => {
       if (stopped) return
       try {
@@ -289,6 +345,20 @@ export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS, bd: BdComman
     const read = () => {
       timer = null
       if (stopped) return
+      const now = stamp()
+      if (now !== null) {
+        if (now === readStamp) {
+          timer = setTimeout(read, checkMs)
+          return
+        }
+        const wait = lastEnd + pollMs - Date.now()
+        if (wait > 0) {
+          timer = setTimeout(read, wait)
+          return
+        }
+      }
+      // taken before the read, so a write landing while it runs shows on the next look
+      readStamp = now
       const run = spawn(bd.file, [...bd.prefix, 'events', 'tail', '--since', String(seq)], {
         cwd: repo,
         env: { ...process.env, NO_COLOR: '1' },
@@ -309,7 +379,8 @@ export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS, bd: BdComman
           handlers.exit(code)
           return
         }
-        timer = setTimeout(read, pollMs)
+        lastEnd = Date.now()
+        timer = setTimeout(read, readStamp === null ? pollMs : checkMs)
       }
       run.stdout!.setEncoding('utf8')
       run.stdout!.on('data', (chunk: string) => {
@@ -336,6 +407,14 @@ export function nodeFollower(repo: string, pollMs = FOLLOW_POLL_MS, bd: BdComman
       },
     }
   }
+}
+
+/** `--metadata=<json>` for one key; the value is a JSON object, so it could not read as a flag anyway */
+function metadataFlag(key: string, value: Record<string, unknown>): string {
+  if (!METADATA_KEY_PATTERN.test(key)) throw new BdError(`invalid metadata key: ${key}`)
+  const payload = JSON.stringify({ [key]: value })
+  if (payload.length > MAX_TEXT) throw new BdError('metadata value is too long')
+  return `--metadata=${payload}`
 }
 
 function parseJson<T>(raw: string, what: string): T {
@@ -413,6 +492,30 @@ export class BeadsClient {
     return normalise(record as Record<string, unknown>)
   }
 
+  /**
+   * one issue with its comment thread from a single `bd show <id> --json --include-comments`.
+   * every bd process takes the embedded store's lock in turn, so one read beats two
+   */
+  async issueWithComments(id: string): Promise<IssueWithComments> {
+    assertId(id)
+    const raw = await this.run(['show', id, '--json', '--include-comments']).catch((error: unknown) => {
+      if (error instanceof BdError && /no issue/i.test(error.message)) throw new BdError(`issue not found: ${id}`, 404)
+      throw error
+    })
+    const payload = parseJson<unknown>(raw, 'bd show')
+    const record = Array.isArray(payload) ? payload[0] : payload
+    if (!record || typeof record !== 'object' || (record as { id?: unknown }).id !== id) {
+      throw new BdError(`issue not found: ${id}`, 404)
+    }
+    const comments = (record as { comments?: unknown }).comments
+    return { issue: normalise(record as Record<string, unknown>), comments: Array.isArray(comments) ? (comments as Comment[]) : [] }
+  }
+
+  /** what the store looks like on disk; see storeStamp. null when it is not embedded dolt */
+  stamp(): string | null {
+    return storeStamp(this.repo)
+  }
+
   /** the comment thread, from `bd comments <id> --json` */
   async comments(id: string): Promise<Comment[]> {
     assertId(id)
@@ -446,20 +549,23 @@ export class BeadsClient {
   async comment(
     id: string,
     text: string,
-    options: { addLabel?: string | null; clearLabels?: string[] } = {},
+    options: { addLabel?: string | null; clearLabels?: string[]; metadata?: { key: string; value: Record<string, unknown> } } = {},
   ): Promise<void> {
     assertId(id)
     const body = assertText(text, 'comment text')
+    const metadata = options.metadata ? metadataFlag(options.metadata.key, options.metadata.value) : null
     // `--` stops bd's flag parsing, so a note may start with a dash; an explicit author wins
     // over whatever BEADS_ACTOR the process inherited
     const author = this.actor ? [`--author=${this.actor}`] : []
     await this.run(['comments', 'add', id, ...author, '--', body])
     const add = options.addLabel ? [assertLabel(options.addLabel)] : []
     const remove = [...new Set(options.clearLabels ?? [])].map(assertLabel).filter((label) => !add.includes(label))
-    if (!add.length && !remove.length) return
+    if (!add.length && !remove.length && !metadata) return
+    // labels and metadata in one update: each bd process waits its turn on the store's lock
     const args = ['update', id]
     for (const label of add) args.push(`--add-label=${label}`)
     for (const label of remove) args.push(`--remove-label=${label}`)
+    if (metadata) args.push(metadata)
     await this.run(args)
   }
 
@@ -532,11 +638,7 @@ export class BeadsClient {
    */
   async setMetadata(id: string, key: string, value: Record<string, unknown>): Promise<void> {
     assertId(id)
-    if (!METADATA_KEY_PATTERN.test(key)) throw new BdError(`invalid metadata key: ${key}`)
-    const payload = JSON.stringify({ [key]: value })
-    if (payload.length > MAX_TEXT) throw new BdError('metadata value is too long')
-    // `--flag=value` form; the value is a JSON object, so it could not read as a flag anyway
-    await this.run(['update', id, `--metadata=${payload}`])
+    await this.run(['update', id, metadataFlag(key, value)])
   }
 
   /** `bd update <id> --due=<when>`; bd reads +1w, next monday, a date or an ISO timestamp */

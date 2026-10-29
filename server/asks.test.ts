@@ -148,7 +148,7 @@ describe('asks routes', () => {
     const runner = async (args: string[]): Promise<RunResult> => {
       calls.push(args)
       if (args[0] === 'export') return ok(`${JSON.stringify({ _type: 'issue', ...record() })}\n`)
-      if (args[0] === 'show') return ok(JSON.stringify([record()]))
+      if (args[0] === 'show') return ok(JSON.stringify([{ ...record(), ...(args.includes('--include-comments') ? { comments } : {}) }]))
       if (args[0] === 'comments' && args[1] !== 'add') return ok(JSON.stringify(comments))
       if (args[0] === 'update') {
         for (const arg of args) {
@@ -203,14 +203,22 @@ describe('asks routes', () => {
     expect(calls).toEqual([])
   })
 
-  it('answers: the note as the human with the note flag, waiting labels cleared, then the stamped question', async () => {
+  it('answers: the note as the human with the note flag, then labels and the stamped question in one update', async () => {
     const { app, calls, meta, labels } = appFor({})
     const res = await app.request(answer({ text: 'apply, after Friday', via: 'hub' }))
     expect(res.status).toBe(200)
     const writes = calls.filter((a) => a[0] === 'comments' && a[1] === 'add' || a[0] === 'update')
+    expect(writes).toHaveLength(2)
     expect(writes[0]).toEqual(['comments', 'add', 'repo-abc', '--author=human:tester', '--', 'apply, after Friday'])
-    expect(writes[1]).toEqual(['update', 'repo-abc', '--add-label=from-human', '--remove-label=needs-human'])
-    expect(writes[2]?.[2]).toMatch(/^--metadata=/)
+    expect(writes[1]).toEqual([
+      'update',
+      'repo-abc',
+      '--add-label=from-human',
+      '--remove-label=needs-human',
+      expect.stringMatching(/^--metadata=/),
+    ])
+    // the question and its thread come from one bd read, not a show plus a comments call
+    expect(calls.filter((a) => a[0] === 'comments' && a[1] !== 'add')).toEqual([])
     const stored = meta()?.['ask'] as Record<string, unknown>
     expect(stored).toMatchObject({ ...ASK, answered: { by: 'human:tester', via: 'hub', text: 'apply, after Friday' } })
     expect(labels()).toEqual(['from-human'])
@@ -225,6 +233,7 @@ describe('asks routes', () => {
       'update',
       'repo-abc',
       '--add-label=from-human',
+      expect.stringMatching(/^--metadata=/),
     ])
   })
 

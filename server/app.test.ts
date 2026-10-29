@@ -63,17 +63,12 @@ function appFor(configOverrides?: Partial<ResolvedBoardConfig>) {
   const runner: Runner = async (args): Promise<RunResult> => {
     calls.push(args)
     if (args[0] === 'export') return ok(`${JSON.stringify({ _type: 'issue', ...issueRecord() })}\n`)
+    const thread = [{ id: 'c1', issue_id: 'repo-abc', author: 'tester', text: 'hi', created_at: 'x' }]
     if (args[0] === 'show') {
       if (args[1] === 'repo-missing') return { stdout: '', stderr: 'no issue found', code: 1 }
-      return ok(JSON.stringify([issueRecord()]))
+      return ok(JSON.stringify([{ ...issueRecord(), ...(args.includes('--include-comments') ? { comments: thread } : {}) }]))
     }
-    if (args[0] === 'comments') {
-      return ok(
-        JSON.stringify([
-          { id: 'c1', issue_id: 'repo-abc', author: 'tester', text: 'hi', created_at: 'x' },
-        ]),
-      )
-    }
+    if (args[0] === 'comments') return ok(JSON.stringify(thread))
     if (args[0] === 'q') return ok('repo-abc\n')
     return ok('')
   }
@@ -177,8 +172,7 @@ describe('reads', () => {
         client: new BeadsClient(
           repo,
           async (args) => {
-            if (args[0] === 'show') return ok(JSON.stringify([issueRecord({ labels: ['test-label'] })]))
-            if (args[0] === 'comments') return ok(JSON.stringify(comments))
+            if (args[0] === 'show') return ok(JSON.stringify([{ ...issueRecord({ labels: ['test-label'] }), comments }]))
             if (args[0] === 'history') return history
             return ok('')
           },
@@ -281,12 +275,11 @@ describe('writes', () => {
     expect(response.status).toBe(200)
     const body = await json<DetailBody>(response)
     expect(body.comments).toHaveLength(1)
-    // the write is two bd runs, then one read of the issue and its comments
+    // the write is two bd runs, then one read of the issue with its comments and one of its history
     expect(calls).toEqual([
       ['comments', 'add', 'repo-abc', '--author=human:tester', '--', 'do it'],
       ['update', 'repo-abc', '--add-label=from-human', '--remove-label=needs-human'],
-      ['show', 'repo-abc', '--json'],
-      ['comments', 'repo-abc', '--json'],
+      ['show', 'repo-abc', '--json', '--include-comments'],
       ['history', 'repo-abc', '--events', '--json'],
     ])
   })

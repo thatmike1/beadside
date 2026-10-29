@@ -1,9 +1,9 @@
 // nodeFollower against a stand-in `bd` script on PATH, so the real spawn loop runs
-import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { nodeFollower, type FollowHandlers } from './bd'
+import { nodeFollower, resolveBd, storeStamp, type FollowHandlers } from './bd'
 
 // prints the records above --since up to the head in ./head, logs each argv, exits with ./code
 const FAKE_BD = `#!/bin/sh
@@ -70,6 +70,24 @@ describe.skipIf(process.platform === 'win32')('nodeFollower', () => {
     expect(calls()).toHaveLength(1)
   })
 
+  it('with a store stamp, reads only after the store changed', async () => {
+    let stamp = 'a'
+    const lines: string[] = []
+    const handle = nodeFollower(dir, 20, resolveBd(), () => stamp, 10)(0, {
+      line: (l) => lines.push(l),
+      stderr: () => {},
+      exit: () => {},
+    })
+    await until(() => lines.length === 2)
+    await new Promise((r) => setTimeout(r, 150))
+    expect(calls()).toHaveLength(1)
+    writeFileSync(join(dir, 'head'), '3')
+    stamp = 'b'
+    await until(() => lines.length === 3)
+    handle.stop()
+    expect(calls()).toEqual(['events tail --since 0', 'events tail --since 2'])
+  })
+
   it('stop() between reads cancels the next one', async () => {
     const lines: string[] = []
     const handle = nodeFollower(dir, 200)(0, { line: (l) => lines.push(l), stderr: () => {}, exit: () => {} })
@@ -77,5 +95,36 @@ describe.skipIf(process.platform === 'win32')('nodeFollower', () => {
     handle.stop()
     await new Promise((r) => setTimeout(r, 400))
     expect(calls()).toHaveLength(1)
+  })
+})
+
+describe('storeStamp', () => {
+  let repo: string
+  beforeEach(() => {
+    repo = mkdtempSync(join(tmpdir(), 'beadside-stamp-'))
+  })
+  afterEach(() => rmSync(repo, { recursive: true, force: true }))
+
+  it('is null without an embedded store', () => {
+    expect(storeStamp(repo)).toBeNull()
+  })
+
+  it('moves on a write, not on a read that only touches mtimes', () => {
+    const noms = join(repo, '.beads', 'embeddeddolt', 'db', '.dolt', 'noms')
+    mkdirSync(noms, { recursive: true })
+    writeFileSync(join(noms, 'manifest'), '5:__DOLT__:root1')
+    writeFileSync(join(noms, 'journal'), 'abc')
+    const first = storeStamp(repo)
+    expect(first).not.toBeNull()
+    // a read rewrites the manifest and journal in place: same bytes, new mtime
+    const later = new Date(Date.now() + 5_000)
+    writeFileSync(join(noms, 'manifest'), '5:__DOLT__:root1')
+    utimesSync(join(noms, 'journal'), later, later)
+    expect(storeStamp(repo)).toBe(first)
+    writeFileSync(join(noms, 'journal'), 'abcdef')
+    const grown = storeStamp(repo)
+    expect(grown).not.toBe(first)
+    writeFileSync(join(noms, 'manifest'), '5:__DOLT__:root2')
+    expect(storeStamp(repo)).not.toBe(grown)
   })
 })
