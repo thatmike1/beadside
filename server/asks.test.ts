@@ -252,9 +252,9 @@ describe('asks routes', () => {
     expect((await app.request(answer({ text: 'pass', raised: '2026-10-28' }))).status).toBe(200)
   })
 
-  it('a retry whose note already landed only stamps the question', async () => {
+  it('a retry whose note already landed finishes labels and stamps the question', async () => {
     const note = { id: 'c1', issue_id: 'repo-abc', author: 'human:tester', text: 'pass', created_at: new Date().toISOString() }
-    const { app, calls, meta } = appFor({}, { ask: ASK }, [note])
+    const { app, calls, meta, labels } = appFor({}, { ask: ASK }, [note])
     const res = await app.request(answer({ text: 'pass' }))
     expect(res.status).toBe(200)
     expect(calls.filter((a) => a[0] === 'comments' && a[1] === 'add')).toHaveLength(0)
@@ -263,6 +263,7 @@ describe('asks routes', () => {
     expect(postedAlready([note], 'agent:claude', 'pass', new Date())).toBe(false)
     expect(postedAlready([note], 'human:tester', 'pass', new Date(Date.now() + 20 * 60_000))).toBe(false)
     expect((meta()?.['ask'] as { answered: { text: string } }).answered.text).toBe('pass')
+    expect(labels()).toEqual(['from-human'])
   })
 
   it('refuses a bead with no question, an empty answer and an unknown via, writing nothing', async () => {

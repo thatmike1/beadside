@@ -430,7 +430,7 @@ export function createBoard(config: AppConfig): Board {
       const later = raisedSince(raw, body['raised'])
       if (later) throw new BdError(`${id}: a later hub raised this question again on ${later}, answer it there`, 412)
       const now = new Date()
-      // a retry after the stamp failed finds its note already there and only stamps
+      // a retry finishes the note flags and answer stamp without duplicating its comment
       const answered = answeredAsk(raw, { text, by: human.id, via, at: now })
       if (!postedAlready(comments, human.id, text, now)) {
         await client.comment(id, text, {
@@ -438,7 +438,10 @@ export function createBoard(config: AppConfig): Board {
           clearLabels,
           metadata: { key: asks.key, value: answered },
         })
-      } else await client.setMetadata(id, asks.key, answered)
+      } else {
+        await client.setLabels(id, boardConfig.note.addLabel ? [boardConfig.note.addLabel] : [], clearLabels)
+        await client.setMetadata(id, asks.key, answered)
+      }
     })
     return c.json(await detail(id))
   })
