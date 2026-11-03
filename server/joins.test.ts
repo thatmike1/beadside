@@ -122,7 +122,7 @@ describe('sessionsFor', () => {
   it('returns null when url is null or server is unreachable', async () => {
     expect(await sessionsFor('issue-1', null)).toBeNull()
     statusToReturn = 500
-    expect(await sessionsFor('issue-1', baseUrl)).toBeNull()
+    expect(await sessionsFor('issue-1', baseUrl, join(tmpdir(), 'beadside-missing-test-titles.sqlite'))).toBeNull()
     expect(await sessionsFor('issue-1', 'http://127.0.0.1:59999')).toBeNull()
   })
 
@@ -151,7 +151,7 @@ describe('sessionsFor', () => {
       },
     ]
 
-    const hits = await sessionsFor('issue-1', baseUrl)
+    const hits = await sessionsFor('issue-1', baseUrl, join(tmpdir(), 'beadside-missing-test-titles.sqlite'))
     expect(hits).not.toBeNull()
     expect(hits).toHaveLength(2)
 
