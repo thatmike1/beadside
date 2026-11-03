@@ -137,3 +137,15 @@ it('never makes a reply unread when an older tab marks an earlier answer seen', 
   expect(kv['beadside.seen.desk.repo-abc']).toBe(recent)
   expect(await late.json()).toEqual({ id: 'repo-abc', at: recent })
 })
+
+it('holds the first stale draw when another tab on the same device posts different picks', async () => {
+  const { kv, board } = store()
+  const app = board('desk')
+  const day = '2026-10-13'
+  const first = await state(await app.request(post('/api/stale-picks', { day, ids: ['repo-first'] })))
+  const persisted = kv['beadside.picks.desk']
+  const second = await state(await app.request(post('/api/stale-picks', { day, ids: ['repo-later'] })))
+  expect(first.picks).toEqual({ day, ids: ['repo-first'] })
+  expect(second.picks).toEqual(first.picks)
+  expect(kv['beadside.picks.desk']).toBe(persisted)
+})
