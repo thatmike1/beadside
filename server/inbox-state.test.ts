@@ -125,3 +125,15 @@ describe('kv-backed inbox state over the api', () => {
     expect(calls).toContainEqual(['kv', 'set', '--', 'beadside.seen.desk.repo-abc', '2026-10-09T12:30:00Z'])
   })
 })
+
+it('never makes a reply unread when an older tab marks an earlier answer seen', async () => {
+  const { kv, board } = store()
+  const app = board('desk')
+  const recent = '2026-10-13T12:00:00Z'
+  const old = '2026-10-12T12:00:00Z'
+  expect((await app.request(post('/api/issues/repo-abc/seen', { at: recent }))).status).toBe(200)
+  const late = await app.request(post('/api/issues/repo-abc/seen', { at: old }))
+  expect(late.status).toBe(200)
+  expect(kv['beadside.seen.desk.repo-abc']).toBe(recent)
+  expect(await late.json()).toEqual({ id: 'repo-abc', at: recent })
+})
