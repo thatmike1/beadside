@@ -454,8 +454,13 @@ export function createBoard(config: AppConfig): Board {
     const id = c.req.param('id')
     const key = seenKey(device, id)
     const at = assertTimestamp((await readBody(c))['at'])
-    await serialise(() => client.kvSet(key, at), false)
-    return c.json({ id, at })
+    const stored = await serialise(async () => {
+      const current = (await client.kvList(key))[key]
+      if (current && Date.parse(current) >= Date.parse(at)) return current
+      await client.kvSet(key, at)
+      return at
+    }, false)
+    return c.json({ id, at: stored })
   })
 
   // stores a day's stale picks for this device, then answers with the picks that hold:
