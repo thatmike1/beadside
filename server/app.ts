@@ -469,8 +469,13 @@ export function createBoard(config: AppConfig): Board {
     const body = await readBody(c)
     const day = assertDay(body['day'])
     const ids = assertPickIds(body['ids'])
-    await serialise(() => client.kvSet(picksKey(device), picksValue({ day, ids }, new Date())), false)
-    return c.json(readInboxState(await client.kvList(KV_PREFIX), day, device))
+    const stored = await serialise(async () => {
+      const current = readInboxState(await client.kvList(KV_PREFIX), day, device)
+      if (current.picks) return current
+      await client.kvSet(picksKey(device), picksValue({ day, ids }, new Date()))
+      return readInboxState(await client.kvList(KV_PREFIX), day, device)
+    }, false)
+    return c.json(stored)
   })
 
   app.all('/api/*', (c) => c.json({ error: 'not found' }, 404))
