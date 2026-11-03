@@ -105,13 +105,15 @@ export function readInboxState(kv: Record<string, string>, day: string, device: 
       if (!known || Date.parse(known) < at) seen[id] = value
     } else if (key.startsWith(PICKS_PREFIX)) {
       const from = key.slice(PICKS_PREFIX.length)
-      let parsed: { day?: unknown; ids?: unknown; at?: unknown }
+      let parsed: unknown
       try {
-        parsed = JSON.parse(value) as typeof parsed
+        parsed = JSON.parse(value)
       } catch {
         continue
       }
-      if (parsed.day !== day || !Array.isArray(parsed.ids) || typeof parsed.at !== 'string') continue
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) continue
+      if (!('day' in parsed) || parsed.day !== day || !('ids' in parsed) || !Array.isArray(parsed.ids)) continue
+      if (!('at' in parsed) || typeof parsed.at !== 'string' || Number.isNaN(Date.parse(parsed.at))) continue
       const ids = parsed.ids.filter((id): id is string => typeof id === 'string' && validId(id))
       const candidate = { at: parsed.at, device: from, ids }
       if (!first || candidate.at < first.at || (candidate.at === first.at && candidate.device < first.device)) {
