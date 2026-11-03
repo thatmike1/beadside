@@ -149,3 +149,13 @@ it('holds the first stale draw when another tab on the same device posts differe
   expect(second.picks).toEqual(first.picks)
   expect(kv['beadside.picks.desk']).toBe(persisted)
 })
+
+it.each(['null', '42', '[]', JSON.stringify({ day: '2026-10-13', ids: ['repo-invalid'], at: '' })])(
+  'ignores malformed persisted picks %s without breaking the inbox', (invalid) => {
+    const kv = {
+      'beadside.picks.bad': invalid,
+      'beadside.picks.good': JSON.stringify({ day: '2026-10-13', ids: ['repo-valid'], at: '2026-10-13T08:00:00Z' }),
+    }
+    expect(readInboxState(kv, '2026-10-13', 'desk').picks).toEqual({ day: '2026-10-13', ids: ['repo-valid'] })
+  },
+)
