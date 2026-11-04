@@ -3,6 +3,7 @@
 import type { BoardConfig, Issue, StalePicks } from './api'
 import { askOf } from './asks'
 import { isThought } from './model'
+import { isReadyToTry } from './tries'
 
 /** a bead untouched this many days is stale */
 export const STALE_DAYS = 30
@@ -86,9 +87,12 @@ function isWorkable(issue: Issue): boolean {
   return issue.status === 'open' || issue.status === 'in_progress' || issue.status === 'blocked'
 }
 
-/** open work nobody touched for STALE_DAYS; parked, pinned and captured thoughts never go stale */
+/**
+ * open work nobody touched for STALE_DAYS; parked, pinned and captured thoughts never go stale,
+ * and neither does a check waiting on the human to try it, whose age means nothing
+ */
 export function isStale(issue: Issue, now: Date, config: BoardConfig): boolean {
-  if (!isWorkable(issue) || isThought(issue, config)) return false
+  if (!isWorkable(issue) || isThought(issue, config) || isReadyToTry(issue, config)) return false
   const touched = time(issue.updated_at)
   return !Number.isNaN(touched) && now.getTime() - touched >= STALE_DAYS * DAY_MS
 }

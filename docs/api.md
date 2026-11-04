@@ -123,6 +123,8 @@ interface NoteConfig { addLabel: string | null; offerToClear: string[] }
 interface InboxConfig { labels: string[] }   // defaults to note.offerToClear when the config has no inbox block
 interface ThoughtsConfig { label: string; title: string; note: string | null }
 interface CaptureConfig { labels: string[] }
+interface AsksConfig { key: string; title: string; note: string | null }
+interface TryItConfig { label: string; key: string; title: string; note: string | null }   // label in derived.allFlags
 interface DerivedConfig { allFlags: string[]; hotChips: string[] }
 
 interface BoardConfig {
@@ -138,8 +140,30 @@ interface BoardConfig {
   thoughts: ThoughtsConfig | null
   flags: string[]
   capture: CaptureConfig
+  asks: AsksConfig | null    // null without an `asks` block
+  tryIt: TryItConfig | null  // null without a `tryIt` block: the try routes 404 and the ui hides the view
   derived: DerivedConfig
 }
+
+// a check waiting on the human, stored under `tryIt.key` in the bead's metadata. read leniently:
+// unknown kit types are dropped, a bare string step becomes { id: '<n>', title }
+interface TryKit {
+  title: string              // the action, concrete
+  app: string | null         // groups the list
+  where: string | null       // phone | desk | camera | ...
+  why: string | null         // why only the human can check it
+  verified: string | null    // what the agent checked
+  expect: string | null      // what success looks like
+  shipped: string | null     // when the tested change went live
+  minutes: number | null
+  kit: KitItem[]             // spec | copy | link | path | qr | image, as the quick-job kit defines them
+  steps: { id: string; title: string; note: string | null }[]
+  last: TryLast | null       // written by the verdict route only
+}
+
+interface TryLast { result: 'works' | 'broken' | 'cant'; at: string; note: string | null }
+
+interface TryEntry { id: string; title: string; status: Status; try: TryKit | null }   // try null: label but no readable kit
 
 interface StalePicks { day: string; ids: string[] }
 
@@ -171,6 +195,9 @@ interface SessionInfo {
 | GET | `/api/search?q=<words>&scope=all\|open\|closed&limit=<1-500>` | | `SearchResult`, the same ranking `beadside search` prints |
 | GET | `/api/events` | | Server-sent events, same-origin only. `state` (`{ live: boolean }`) on connect and whenever live updates start or stop; `changed` (`{}`) when the ledger moved and lists should be refetched. See Live updates |
 | GET | `/api/asks?ids=<id,id>` | | `{ key: string, asks: AskEntry[] }`: every bead that is not closed and carries a question under `asks.key`, plus each id in `ids` (full or short, at most 200) whatever its state, so a page that raised a question can tell it closed. `AskEntry` is `{ id, title, status, closed_at, ask: Ask \| null }`, `Ask` as in `server/asks.ts`. 404 without an `asks` block in the config |
+| GET | `/api/tries` | | `{ label: string, key: string, tries: TryEntry[] }`: every bead that is not closed and carries `tryIt.label`, sorted by `try.app` (none last), then title. 404 without a `tryIt` block |
+| GET | `/api/tries/:id/image/:n` | | the bytes of the `n`-th `image` item (counting images only) in the bead's kit, when its `src` is an absolute local path ending in png, jpg, jpeg, gif, webp, avif or svg and the bead still carries the label; 404 otherwise. Served with `content-security-policy: default-src 'none'`. A web `src` is used by the page directly |
+| POST | `/api/issues/:id/try/verdict` | `{ verdict: 'works' \| 'broken' \| 'cant', note?: string }` | `IssueDetail & { verdict: TryLast }`; see Try verdicts. 400 for an unknown verdict or a `broken`/`cant` with no note, 409 when the bead no longer carries `tryIt.label` (already settled), 404 without a `tryIt` block, 502 with `{ error, commented: true }` when the verdict comment landed but a later step failed |
 | POST | `/api/issues/:id/comment` | `{ text: string, clear?: boolean }` | `IssueDetail` |
 | POST | `/api/issues/:id/ask/answer` | `{ text: string, via?: 'beadside' \| 'hub', clear?: boolean, raised?: string }` | `IssueDetail`; answers the stored question. 409 when the bead has none, 404 without an `asks` block, 412 when `raised` (the day the page showed the question) is older than the question's `last_raised`. A retry finds the human's identical note from the last 15 minutes and finishes the labels and question stamp without adding another comment |
 | POST | `/api/issues/:id/status` | `{ status: Status, reason?: string, until?: string }` | `{ issue }` |
@@ -202,7 +229,29 @@ With the journal off, a bd without it, or a follower that keeps exiting, `state`
 - create: `bd q <title> -l <label>...`; defaults to `config.capture.labels` when none given.
 - ask answer: reads the bead's metadata fresh, then the comment write above (author, `note.addLabel`, and `note.offerToClear` removed unless `clear` is false), then `bd update <id> --metadata={"<asks.key>": {...}}` with the stored question as it was plus `answered: { at, by, via, text }`, `text` cut at 500 characters. bd merges metadata at the top level, so the question key is replaced whole and every other key stays.
 
+- try verdict: see Try verdicts below.
+
 The server never accepts a raw argument list from the client. Every route maps to a fixed argument shape; ids are validated against `^[A-Za-z0-9_-]+(\.[0-9]+)?$` before use. Every `bd` call runs with `cwd` set to the repo path and `--no-color` where supported; output is parsed, never echoed to the client on success.
+
+## Try verdicts
+
+`POST /api/issues/:id/try/verdict` is the one write path for a ready-to-try check; home base forwards to it. It runs in the board's write queue, reads the bead fresh, and refuses with 409 when the bead no longer carries `tryIt.label`, so a double click or an old tab never settles a bead twice. Then, by verdict:
+
+| verdict | comment, as the configured human | `<key>.last` | labels | status |
+|---|---|---|---|---|
+| `works` | `You tried <title>: it works.`, a blank line, `Expected: <expect>`, then the note if any | `{ result, at, note }` | `tryIt.label` removed | closed, reason `tried on the real thing: it works` |
+| `broken` | `You tried <title>: still broken.`, a blank line, the note (required) | same | `note.addLabel` added, `tryIt.label` removed | unchanged |
+| `cant` | `You couldn't check <title>.`, a blank line, the note (required) | same | `note.addLabel` added, `tryIt.label` kept | unchanged |
+
+`<title>` is the kit's title, the bead's when it has no kit. `last.note` is cut at 500 characters; the comment carries the whole note. Order of writes: the comment, then for `broken`/`cant` one `bd update` with the labels and the metadata (the kit as stored plus `last`; every other key stays), for `works` the metadata, `bd close`, and the label removal last, so a failed close leaves the label on and the verdict can be sent again.
+
+If a write after the comment fails, the answer is 502 `{ error, commented: true }`, the error saying the comment is saved and what state the bead is in. Sending the same verdict and note again within 15 minutes finds the human's identical latest comment, skips it and finishes the rest. A second identical `cant` likewise adds no second comment.
+
+```bash
+curl -s -X POST http://127.0.0.1:1338/api/issues/<id>/try/verdict \
+  -H "x-bd-token: $(curl -s http://127.0.0.1:1338/api/session | jq -r .token)" \
+  -H 'content-type: application/json' -d '{"verdict":"cant","note":"the release link 404s"}'
+```
 
 ## Inbox state
 

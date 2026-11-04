@@ -10,11 +10,12 @@ import { axisStyle, formatTime, laneColor } from '../format'
 import type { BodyFont } from '../use-font'
 import type { Theme } from '../use-theme'
 import { SearchResults } from './search-results'
-import { InboxList, StaleList, type RowActions } from './inbox-list'
+import { InboxList, StaleList, TryList, type RowActions } from './inbox-list'
+import type { TryGroup } from '../tries'
 import { Row } from './row'
 
 /** the inbox lands first; the board is the lanes, stale the board filtered to old open work */
-export type View = 'inbox' | 'board' | 'stale'
+export type View = 'inbox' | 'board' | 'stale' | 'tries'
 
 interface IndexPaneProps {
   board: Board
@@ -40,6 +41,8 @@ interface IndexPaneProps {
   onView: (view: View) => void
   inbox: Inbox
   stale: Issue[]
+  /** beads ready to try, by app; empty when try-it is off */
+  tries: TryGroup[]
   now: Date
   actions: RowActions
 }
@@ -94,6 +97,7 @@ export function IndexPane(props: IndexPaneProps) {
     onView,
     inbox,
     stale,
+    tries,
     now,
     actions,
   } = props
@@ -184,6 +188,9 @@ export function IndexPane(props: IndexPaneProps) {
               ['inbox', 'inbox', inbox.count, 'i'],
               ['board', 'board', null, 'b'],
               ['stale', 'stale', stale.length, 'o'],
+              ...(config.tryIt
+                ? ([['tries', config.tryIt.title, tries.reduce((n, g) => n + g.issues.length, 0), 'r']] as const)
+                : []),
             ] as const
           ).map(([key, label, n, kbd]) => (
             <button
@@ -285,6 +292,7 @@ export function IndexPane(props: IndexPaneProps) {
           <InboxList {...listProps} inbox={inbox} onBoard={() => onView('board')} onToggleSection={onToggleSection} />
         ) : null}
         {!searching && view === 'stale' ? <StaleList {...listProps} stale={stale} /> : null}
+        {!searching && view === 'tries' ? <TryList {...listProps} groups={tries} /> : null}
         {searching || view !== 'board' ? null : board.sections.map((section) => {
           const color = laneColor(section.axis, config)
           return (
@@ -363,6 +371,7 @@ const KEYS: { keys: string[]; what: string }[] = [
   { keys: ['enter'], what: 'write a note' },
   { keys: ['esc'], what: 'leave a field, clear the search' },
   { keys: ['i', 'b', 'o'], what: 'inbox, board, stale' },
+  { keys: ['r'], what: 'ready to try, when on' },
   { keys: ['s'], what: 'search' },
   { keys: ['/'], what: 'capture a thought' },
   { keys: ['c'], what: 'copy the id' },

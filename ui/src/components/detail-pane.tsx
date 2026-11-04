@@ -31,6 +31,8 @@ import { WriteRow } from './write-row'
 import { NoteBox } from './note-box'
 import { AskCard } from './ask-card'
 import { askOf } from '../asks'
+import { TryCard } from './try-card'
+import { tryOf, type Verdict } from '../tries'
 
 /** where a search hit points inside the open bead */
 export interface RevealTarget {
@@ -71,6 +73,10 @@ interface DetailPaneProps {
   folds: Folds
   /** answers the bead's stored question; resolves false when it failed */
   onAnswer: (text: string) => Promise<boolean>
+  /** a verdict on the bead's ready-to-try check; resolves false when it failed */
+  onVerdict: (verdict: Verdict, note: string) => Promise<boolean>
+  /** copies a kit chip's text */
+  onCopyText: (text: string, what: string) => void
 }
 
 /** fold key of the description, beside the index sections in the same store */
@@ -253,6 +259,7 @@ export function DetailPane(props: DetailPaneProps) {
   const note = latestNote(comments)
   const noteRead = detailReady && !unread ? (detail?.note_read ?? null) : null
   const ask = askOf(full, config)
+  const check = tryOf(full, config)
 
   return (
     <main className="read" ref={readRef} style={axisStyle(axis, config) as CSSProperties}>
@@ -332,6 +339,16 @@ export function DetailPane(props: DetailPaneProps) {
           </div>
 
           {ask ? <AskCard key={full.id} ask={ask} short={short} config={config} onAnswer={props.onAnswer} /> : null}
+          {check ? (
+            <TryCard
+              key={`try:${full.id}`}
+              kit={check}
+              id={full.id}
+              short={short}
+              onCopy={props.onCopyText}
+              onVerdict={props.onVerdict}
+            />
+          ) : null}
 
           {unread ? (
             <button

@@ -167,6 +167,14 @@ export interface AsksConfig {
   note: string | null
 }
 
+/** checks only the human can make; null when the board config has no tryIt block */
+export interface TryItConfig {
+  label: string
+  key: string
+  title: string
+  note: string | null
+}
+
 export interface DerivedConfig {
   allFlags: string[]
   hotChips: string[]
@@ -187,6 +195,8 @@ export interface BoardConfig {
   flags: string[]
   capture: CaptureConfig
   asks: AsksConfig | null
+  /** absent from a server older than try-it */
+  tryIt?: TryItConfig | null
   derived: DerivedConfig
 }
 
@@ -320,6 +330,20 @@ export function postComment(
 export function answerAsk(id: string, text: string, clear?: boolean): Promise<IssueDetail> {
   const body: { text: string; clear?: boolean } = clear === undefined ? { text } : { text, clear }
   return post<IssueDetail>(`/api/issues/${encodeURIComponent(id)}/ask/answer`, body)
+}
+
+/** what a verdict wrote: the bead as it now stands, plus the recorded `try.last` */
+export interface VerdictResult extends IssueDetail {
+  verdict: { result: 'works' | 'broken' | 'cant'; at: string; note: string | null }
+}
+
+/**
+ * the human's verdict on a ready-to-try check: works closes the bead, broken hands it back to
+ * agents, cant keeps it ready to try. broken and cant need a note
+ */
+export function sendVerdict(id: string, verdict: 'works' | 'broken' | 'cant', note?: string): Promise<VerdictResult> {
+  const body: { verdict: string; note?: string } = note ? { verdict, note } : { verdict }
+  return post<VerdictResult>(`/api/issues/${encodeURIComponent(id)}/try/verdict`, body)
 }
 
 /** close, defer, reopen or plain status change */

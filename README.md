@@ -159,6 +159,22 @@ An agent can leave a question on a bead for you to answer, in the bead's metadat
 
 The agent writes the question whole, with `bd update <id> --metadata @ask.json` and a file like `{"ask": {"question": "apply or pass?", "options": [{"k": "apply", "sub": "one interview"}, {"k": "pass"}], "lean": "apply", "why": "..."}}`. `title`, `due`, `first_raised`, `last_raised` and `days_raised` are optional. The board then shows the question as a card pinned above the description, and lists every open one in a section at the top of the inbox, the longest asked first. Picking an option fills the answer box; answering sends the same note the note box sends (your author id, the note flag) and stamps the question `answered`, so it shows as answered and waiting for a session rather than open. The agent that acts on the answer removes the question with `bd update <id> --unset-metadata ask` and takes the note flag off. Closed beads drop out. Another local page can read and answer questions through its own server with `GET /api/asks` and `POST /api/issues/<id>/ask/answer` (see `docs/api.md`).
 
+### ready to try
+
+A bead whose work has shipped and where the only thing left is you looking at it on the real thing (a phone, a device, a real account) can wait for your verdict instead of sitting among open work. Turn it on with a `tryIt` block (`label` defaults to `try-it`, `key` to `try`, `title` to `ready to try`):
+
+```json
+"tryIt": { "label": "try-it", "key": "try", "title": "ready to try" }
+```
+
+The shipping agent labels the bead and stores the check with `bd update <id> --metadata @try.json --add-label try-it`, from a file like `{"try": {"title": "Drag the reader sheet on your phone", "app": "reader", "where": "phone", "why": "real touch gestures cannot be checked headless", "expect": "the sheet follows an early drag", "steps": [{"id": "drag", "title": "Start dragging as the sheet opens"}], "kit": [{"type": "link", "label": "open the reader", "href": "https://..."}]}}`. `verified`, `shipped`, `minutes` and `kit` are optional; kit items are `spec`, `copy`, `link`, `path`, `qr` and `image`. The board lists every check under its own view, `r` (**ready to try**, grouped by `app`), never in the inbox, the waiting section or the stale filter, and shows the check pinned above the description with three buttons:
+
+- **Works**: your comment saying it works, the bead closed, the label off
+- **Still broken**: your comment with what you saw, the note flag on, the label off; the bead goes back to normal agent work
+- **Couldn't check**: your comment with what stopped you, the note flag on, the label kept, so an agent fixes the obstacle
+
+The last two ask for a short note first. Every verdict is recorded under `try.last`. Another local page can list and settle checks through its own server with `GET /api/tries` and `POST /api/issues/<id>/try/verdict` (see `docs/api.md`).
+
 ### project labels
 
 Any other label that is not a lane label, sub-label, or workflow flag automatically groups beads within a lane whenever 2 or more beads share it.
@@ -321,6 +337,7 @@ pnpm run typecheck        # tsc type checks across server and ui
 ## keyboard
 
 - `i` / `b` / `o`: inbox, board, stale
+- `r`: ready to try, when the config has a `tryIt` block
 - `j` / `k` or `Down` / `Up`: move selection
 - `Enter`: focus note composer
 - `Esc`: leave note composer / blur

@@ -2,6 +2,8 @@
 // argument shape; the client never gets to name a command or a flag.
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import { existsSync } from 'node:fs'
+import { readFile } from 'node:fs/promises'
+import { extname, isAbsolute } from 'node:path'
 import { serveStatic } from '@hono/node-server/serve-static'
 import { Hono } from 'hono'
 import type { Context } from 'hono'
@@ -26,6 +28,17 @@ import { notesFor, sessionsFor } from './joins'
 import { LiveFeed, type LiveFeedOptions, type LiveState } from './live'
 import { noteRead } from './note-read'
 import { DEFAULT_LIMIT, SCOPES, searchIssues, type SearchScope } from './search'
+import {
+  assertVerdict,
+  assertVerdictNote,
+  parseTry,
+  rawTry,
+  tryEntries,
+  verdictComment,
+  verdictPosted,
+  withLast,
+  type TryLast,
+} from './tries'
 
 export interface AppConfig {
   client: BeadsClient
@@ -104,6 +117,17 @@ function stringArray(value: unknown, what: string): string[] {
     throw new BdError(`${what} must be an array of strings`)
   }
   return value as string[]
+}
+
+/** what a check's kit image may be, by extension */
+const IMAGE_TYPES: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.svg': 'image/svg+xml',
 }
 
 /** how long a search may reuse the last `bd export` before reading the ledger again */
@@ -444,6 +468,102 @@ export function createBoard(config: AppConfig): Board {
       }
     })
     return c.json(await detail(id))
+  })
+
+  // checks only the human can make (tryIt in .beadside.json): every open bead carrying the label,
+  // with its kit. home base reads this through its own server, never cross-origin
+  app.get('/api/tries', async (c) => {
+    const tries = boardConfig.tryIt
+    if (!tries) throw new BdError('try-it is off: no tryIt block in the board config', 404)
+    const corpus = await loadCorpus(searchAge())
+    return c.json({ label: tries.label, key: tries.key, tries: tryEntries(corpus, tries.label, tries.key) })
+  })
+
+  // the n-th image of a check's kit, when it is a local file: the page cannot load file urls. only
+  // images a ready-to-try bead's kit names are served, so this never reads an arbitrary path
+  app.get('/api/tries/:id/image/:n', async (c) => {
+    const tries = boardConfig.tryIt
+    if (!tries) throw new BdError('try-it is off: no tryIt block in the board config', 404)
+    const id = assertId(c.req.param('id'))
+    const n = Number(c.req.param('n'))
+    if (!Number.isInteger(n) || n < 0) throw new BdError('image index must be a whole number')
+    const issue = await client.issue(id)
+    const kit = issue.labels.includes(tries.label) ? parseTry(issue['metadata'], tries.key) : null
+    const image = kit?.kit.filter((item) => item.type === 'image')[n]
+    const src = image?.type === 'image' ? image.src : null
+    const type = src ? IMAGE_TYPES[extname(src).toLowerCase()] : undefined
+    if (!src || !isAbsolute(src) || !type) throw new BdError(`${id} has no local image ${n} in its check`, 404)
+    let data: Buffer
+    try {
+      data = await readFile(src)
+    } catch {
+      throw new BdError(`image not readable: ${src}`, 404)
+    }
+    return c.body(new Uint8Array(data), 200, {
+      'content-type': type,
+      'cache-control': 'no-store',
+      // an svg opened on its own runs nothing
+      'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'",
+      'x-content-type-options': 'nosniff',
+    })
+  })
+
+  // the human's verdict on a check: works closes the bead, broken hands it back to agents, cant
+  // keeps it ready to try and flags the obstacle. read fresh, refused once the label is gone, so a
+  // double click or an old tab never settles a bead twice
+  app.post('/api/issues/:id/try/verdict', async (c) => {
+    const tries = boardConfig.tryIt
+    if (!tries) throw new BdError('try-it is off: no tryIt block in the board config', 404)
+    const id = assertId(c.req.param('id'))
+    const body = await readBody(c)
+    const verdict = assertVerdict(body['verdict'])
+    const note = assertVerdictNote(verdict, body['note'])
+    const flag = boardConfig.note.addLabel
+    const outcome = await serialise(async (): Promise<{ last: TryLast; failed: { state: string; error: string } | null }> => {
+      const { issue, comments } = await client.issueWithComments(id)
+      if (!issue.labels.includes(tries.label)) {
+        throw new BdError(`${id} no longer carries ${tries.label}: the check is already settled`, 409)
+      }
+      const kit = parseTry(issue['metadata'], tries.key)
+      const text = verdictComment(verdict, kit?.title ?? issue.title, note, kit?.expect ?? null)
+      const now = new Date()
+      const value = withLast(rawTry(issue['metadata'], tries.key) ?? {}, { result: verdict, at: now, note })
+      const metadata = { key: tries.key, value }
+      const last = value['last'] as TryLast
+      // a retry whose comment landed finishes the rest without a second comment
+      if (!verdictPosted(comments, human.id, text, now)) await client.comment(id, text)
+      // from here the comment is on the bead; a failure says what state it left
+      let state = verdict === 'works' ? 'the bead is still open' : `its labels and ${tries.key}.last did not change`
+      try {
+        if (verdict === 'works') {
+          // the label comes off last: a failed close leaves it on, so a retry can finish the job
+          await client.amend(id, { metadata })
+          await client.setStatus(id, 'closed', 'tried on the real thing: it works')
+          state = `the bead is closed but still carries ${tries.label}`
+          await client.amend(id, { remove: [tries.label] })
+        } else {
+          await client.amend(id, {
+            add: flag ? [flag] : [],
+            remove: verdict === 'broken' ? [tries.label] : [],
+            metadata,
+          })
+        }
+      } catch (error) {
+        return { last, failed: { state, error: error instanceof Error ? error.message : String(error) } }
+      }
+      return { last, failed: null }
+    })
+    if (outcome.failed) {
+      const { state, error } = outcome.failed
+      return c.json(
+        {
+          error: `your verdict comment is saved on ${id}, but ${state} (${error}). send the same verdict again to finish`,
+          commented: true,
+        },
+        502,
+      )
+    }
+    return c.json({ ...(await detail(id)), verdict: outcome.last })
   })
 
   // the inbox's memory, shared by every board on this beads database through `bd kv`

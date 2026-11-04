@@ -18,6 +18,7 @@ import { useNarrow } from './use-narrow'
 import { useFont } from './use-font'
 import { useTheme } from './use-theme'
 import { useInboxMemory } from './use-inbox-memory'
+import { readyToTry, type Verdict } from './tries'
 
 const EMPTY_CONFIG: BoardConfig = {
   agentsview: null,
@@ -32,6 +33,7 @@ const EMPTY_CONFIG: BoardConfig = {
   flags: [],
   capture: { labels: [] },
   asks: null,
+  tryIt: null,
   derived: { allFlags: [], hotChips: [] },
   human: null,
 }
@@ -169,8 +171,13 @@ export function App() {
     const order = stale.map((i) => i.id)
     return { order, layout: order }
   }, [stale])
+  const tries = useMemo(() => readyToTry(issues ?? [], config), [issues, config])
+  const triesNav = useMemo(() => {
+    const order = tries.flatMap((g) => g.issues.map((i) => i.id))
+    return { order, layout: order }
+  }, [tries])
   // keyboard movement walks whichever list is on screen
-  const nav = view === 'inbox' ? inbox : view === 'stale' ? staleNav : board
+  const nav = view === 'inbox' ? inbox : view === 'stale' ? staleNav : view === 'tries' ? triesNav : board
 
   const knownLabels = useMemo(() => {
     const seen = new Set<string>([
@@ -455,12 +462,13 @@ export function App() {
       // a view switch rebuilds the inbox: replies read so far leave it
       setVisitRead([])
       setHolding(null)
-      const order = next === 'inbox' ? inbox.order : next === 'stale' ? staleNav.order : board.order
+      const order =
+        next === 'inbox' ? inbox.order : next === 'stale' ? staleNav.order : next === 'tries' ? triesNav.order : board.order
       if (selected && order.includes(selected)) return
       const first = order[0]
       if (first) select(first, false)
     },
-    [inbox.order, staleNav.order, board.order, selected, select],
+    [inbox.order, staleNav.order, triesNav.order, board.order, selected, select],
   )
 
   const links = useMemo(
@@ -580,6 +588,45 @@ export function App() {
     [current, config, clears, qc, applyIssue, repoName, toaster, refresh],
   )
 
+  // a verdict on a ready-to-try check: the server writes the comment, try.last, the labels and,
+  // for works, the close. the card keeps its note until bd is done
+  const onVerdict = useCallback(
+    async (verdict: Verdict, note: string): Promise<boolean> => {
+      if (!current) return false
+      const id = current.id
+      try {
+        const detail = await api.sendVerdict(id, verdict, note || undefined)
+        qc.setQueryData<IssueDetail>(['issue', id], detail)
+        applyIssue(detail.issue)
+        const short = shortId(id, repoName)
+        toaster.show(
+          verdict === 'works'
+            ? `${short} works, closed`
+            : verdict === 'broken'
+              ? `${short} still broken, back with the agents`
+              : `${short}: noted what stopped you, still ready to try`,
+        )
+        return true
+      } catch (error: unknown) {
+        toaster.fail(error instanceof Error ? error.message : 'verdict failed')
+        return false
+      } finally {
+        refresh(id)
+      }
+    },
+    [current, qc, applyIssue, repoName, toaster, refresh],
+  )
+
+  const onCopyText = useCallback(
+    (text: string, what: string) => {
+      void navigator.clipboard.writeText(text).then(
+        () => toaster.show(`copied ${what}`),
+        () => toaster.fail(`could not copy ${what}`),
+      )
+    },
+    [toaster],
+  )
+
   const onCaptureSubmit = useCallback(() => {
     const title = capture.trim()
     if (!title) return
@@ -692,15 +739,15 @@ export function App() {
         e.preventDefault()
         const next = step(nav, selected, -1)
         if (next) select(next)
-      } else if (!searching && (e.key === 'i' || e.key === 'b' || e.key === 'o')) {
+      } else if (!searching && (e.key === 'i' || e.key === 'b' || e.key === 'o' || (e.key === 'r' && config.tryIt))) {
         e.preventDefault()
-        changeView(e.key === 'i' ? 'inbox' : e.key === 'b' ? 'board' : 'stale')
+        changeView(e.key === 'i' ? 'inbox' : e.key === 'b' ? 'board' : e.key === 'o' ? 'stale' : 'tries')
       } else if (e.key === 's') {
         e.preventDefault()
         searchRef.current?.focus()
         searchRef.current?.select()
-      } else if ((searching || view === 'stale') && (e.key === 'h' || e.key === 'l')) {
-        // folds belong to the board and the inbox; the results and the stale filter have none
+      } else if ((searching || view === 'stale' || view === 'tries') && (e.key === 'h' || e.key === 'l')) {
+        // folds belong to the board and the inbox; the results and the flat filters have none
       } else if (e.key === 'h' || e.key === 'l') {
         e.preventDefault()
         if (!selected) return
@@ -749,7 +796,7 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [board, inbox, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme, toggleFont])
+  }, [board, inbox, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme, toggleFont, config])
 
   if (sessionQuery.isError || issuesQuery.isError) {
     const error = sessionQuery.error ?? issuesQuery.error
@@ -790,6 +837,7 @@ export function App() {
           onView={changeView}
           inbox={inbox}
           stale={stale}
+          tries={tries}
           now={now}
           actions={rowActions}
           search={{
@@ -843,6 +891,8 @@ export function App() {
           onOpenLink={openLink}
           folds={folds}
           onAnswer={onAnswer}
+          onVerdict={onVerdict}
+          onCopyText={onCopyText}
         />
       </div>
       <Toast toast={toaster.toast} onUndo={toaster.runUndo} onDismiss={toaster.dismiss} />

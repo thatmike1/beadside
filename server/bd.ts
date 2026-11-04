@@ -648,6 +648,19 @@ export class BeadsClient {
    * writes one metadata key whole with `bd update <id> --metadata <json>`. bd merges metadata at
    * the top level, so the other keys stay and this one is replaced, never merged into
    */
+  /** labels and one metadata key in a single `bd update`, so a retry never lands half of it */
+  async amend(id: string, change: { add?: string[]; remove?: string[]; metadata?: { key: string; value: Record<string, unknown> } }): Promise<void> {
+    assertId(id)
+    const add = [...new Set(change.add ?? [])].map(assertLabel)
+    const remove = [...new Set(change.remove ?? [])].map(assertLabel).filter((label) => !add.includes(label))
+    const metadata = change.metadata ? metadataFlag(change.metadata.key, change.metadata.value) : null
+    if (!add.length && !remove.length && !metadata) return
+    const args = ['update', id]
+    for (const label of add) args.push(`--add-label=${label}`)
+    for (const label of remove) args.push(`--remove-label=${label}`)
+    if (metadata) args.push(metadata)
+    await this.run(args)
+  }
   async setMetadata(id: string, key: string, value: Record<string, unknown>): Promise<void> {
     assertId(id)
     await this.run(['update', id, metadataFlag(key, value)])

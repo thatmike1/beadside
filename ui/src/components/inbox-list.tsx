@@ -5,6 +5,7 @@ import type { BoardConfig, Issue } from '../api'
 import type { Inbox, InboxKind } from '../inbox'
 import { answerOf, daysUntouched, dueState, inboxFoldKey, isAnswerSection } from '../inbox'
 import { askOf, raisedText } from '../asks'
+import { parseTry, tryMeta, lastText, type TryGroup } from '../tries'
 import { axisOf } from '../model'
 import { axisStyle, formatShortDate, relativeTime } from '../format'
 import { Row } from './row'
@@ -281,6 +282,57 @@ export function StaleList(props: ListProps & { stale: Issue[] }) {
           <span className="gt">nothing stale. every open bead moved this month.</span>
         </div>
       )}
+    </div>
+  )
+}
+
+/** one check: the action to try, where and how long, and what came back last time */
+function tryRow(issue: Issue, list: ListProps) {
+  const kit = list.config.tryIt ? parseTry(issue.metadata, list.config.tryIt.key) : null
+  if (!kit) return <ActionRow key={issue.id} issue={issue} why="no check kit stored on this bead yet" list={list} />
+  const why = [kit.title, ...tryMeta(kit)].join(' · ')
+  return (
+    <ActionRow
+      key={issue.id}
+      issue={issue}
+      why={kit.last ? `${why} · ${lastText(kit.last)}` : why}
+      at={kit.last?.at}
+      list={list}
+    />
+  )
+}
+
+/** checks only the human can make, grouped by the app they happen in; age never counts here */
+export function TryList(props: ListProps & { groups: TryGroup[] }) {
+  const { groups, config } = props
+  const title = config.tryIt?.title ?? 'ready to try'
+  const total = groups.reduce((n, g) => n + g.issues.length, 0)
+  return (
+    <div className="sec">
+      <div className="sechead">
+        <span>{title}</span>
+        <span className="n">{total}</span>
+        <span className="note">{config.tryIt?.note ?? 'shipped, waiting for you to see it on the real thing'}</span>
+      </div>
+      <div className="secrule" />
+      {groups.map((group) => (
+        <div className="group" key={group.app ?? ''}>
+          <div className="row caption">
+            <span />
+            <span className="mono rid" />
+            <span className="rt">
+              <span className="chip">{group.app ?? 'no app named'}</span>
+              <span className="gn">{group.issues.length}</span>
+            </span>
+          </div>
+          <div className="kids">{group.issues.map((issue) => tryRow(issue, props))}</div>
+        </div>
+      ))}
+      {total === 0 ? (
+        <div className="grouphead">
+          <span className="gt">nothing to try right now.</span>
+        </div>
+      ) : null}
     </div>
   )
 }

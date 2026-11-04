@@ -161,6 +161,8 @@ describe('the ask card', () => {
         onOpenLink={noop}
         folds={{ isFolded: (_key, fallback) => fallback, setFolded: noop }}
         onAnswer={async () => true}
+        onVerdict={async () => true}
+        onCopyText={() => {}}
       />,
     )
   }

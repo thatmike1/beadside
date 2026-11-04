@@ -92,6 +92,22 @@ export interface ResolvedAsksConfig {
   note: string | null
 }
 
+export interface TryItConfig {
+  label?: string
+  key?: string
+  title?: string | null
+  note?: string | null
+}
+
+export interface ResolvedTryItConfig {
+  /** the label that marks a bead ready to try */
+  label: string
+  /** the metadata key the check kit sits under */
+  key: string
+  title: string
+  note: string | null
+}
+
 export interface ResolvedDerivedConfig {
   allFlags: string[]
   hotChips: string[]
@@ -116,6 +132,7 @@ export interface BoardConfig {
   flags?: string[]
   capture?: CaptureConfig
   asks?: AsksConfig | null
+  tryIt?: TryItConfig | null
 }
 
 export interface ResolvedBoardConfig {
@@ -134,6 +151,8 @@ export interface ResolvedBoardConfig {
   capture: ResolvedCaptureConfig
   /** questions stored on beads, answered from the board; null keeps the feature off */
   asks: ResolvedAsksConfig | null
+  /** checks only the human can make, given a verdict from the board; null keeps the feature off */
+  tryIt: ResolvedTryItConfig | null
   derived: ResolvedDerivedConfig
 }
 
@@ -357,12 +376,31 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     asks = { key, title, note }
   }
 
+  let tryIt: ResolvedTryItConfig | null = null
+  if (obj['tryIt'] !== undefined && obj['tryIt'] !== null) {
+    if (typeof obj['tryIt'] !== 'object' || Array.isArray(obj['tryIt'])) {
+      throw new ConfigError('tryIt must be an object', 'tryIt')
+    }
+    const t = obj['tryIt'] as Record<string, unknown>
+    const label = t['label'] === undefined || t['label'] === null ? 'try-it' : validateLabel(t['label'], 'tryIt.label')
+    const key = t['key'] === undefined || t['key'] === null ? 'try' : validateString(t['key'], 'tryIt.key')
+    if (!METADATA_KEY.test(key)) {
+      throw new ConfigError('tryIt.key must be 1-64 letters, digits, _ . or -, not starting with . or -', 'tryIt.key')
+    }
+    if (asks && asks.key === key) throw new ConfigError('tryIt.key must differ from asks.key', 'tryIt.key')
+    const title =
+      t['title'] !== undefined && t['title'] !== null ? validateString(t['title'], 'tryIt.title') : 'ready to try'
+    const note = validateOptionalString(t['note'], 'tryIt.note')
+    tryIt = { label, key, title, note }
+  }
+
   const allFlagsSet = new Set<string>([
     ...waiting.labels,
     ...(noteConfig.addLabel ? [noteConfig.addLabel] : []),
     ...noteConfig.offerToClear,
     ...inbox.labels,
     ...(thoughts ? [thoughts.label] : []),
+    ...(tryIt ? [tryIt.label] : []),
     ...flags,
   ])
   // hot chips are the labels the note box writes or offers to clear
@@ -390,6 +428,7 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     flags,
     capture,
     asks,
+    tryIt,
     derived,
   }
 }
