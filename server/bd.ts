@@ -266,18 +266,30 @@ export const FOLLOW_POLL_MS = 3_000
 export const STORE_CHECK_MS = 1_000
 
 /**
- * what an embedded dolt store looks like on disk, as a string that changes on every write and
- * on no read: the manifest's content plus the name and size of every file under each
- * database's `noms`. reads rewrite the manifest and the chunk journal in place, so their
- * mtimes move without a write and only content and sizes say anything. null when the repo
- * has no embedded store (server mode, a bd that lays it out differently): callers then read
- * the journal on a timer as before.
+ * what the dolt store looks like on disk, as a string that changes on every write and on no
+ * read: the manifest's content plus the name and size of every file under each database's
+ * `noms`. reads rewrite the manifest and the chunk journal in place, so their mtimes move
+ * without a write and only content and sizes say anything. the store is `.beads/embeddeddolt`
+ * in embedded mode and `.beads/dolt` when a local dolt sql-server owns it (server mode); a
+ * local server writes the same files, so the stamp works for both. null when neither exists
+ * (a remote server, a bd that lays it out differently): callers then read the journal on a
+ * timer as before.
  */
 export function storeStamp(repo: string): string | null {
-  const root = join(repo, '.beads', 'embeddeddolt')
+  for (const dir of ['embeddeddolt', 'dolt']) {
+    const stamp = stampOf(join(repo, '.beads', dir))
+    if (stamp !== null) return stamp
+  }
+  return null
+}
+
+function stampOf(root: string): string | null {
   let databases: string[]
   try {
-    databases = readdirSync(root).sort()
+    // the server's data dir also holds its own `.dolt` and `.doltcfg`, which are not databases
+    databases = readdirSync(root)
+      .filter((name) => !name.startsWith('.'))
+      .sort()
   } catch {
     return null
   }
@@ -313,7 +325,7 @@ export function storeStamp(repo: string): string | null {
  * and waits its turn behind a sync. a read that exits nonzero ends the follow, as a `--follow`
  * child dying would.
  *
- * with an embedded store the follower looks at its files every `checkMs` and runs a read only
+ * with a local store (embedded, or a server on this machine) the follower looks at its files every `checkMs` and runs a read only
  * when they changed since the last one, at most one per `pollMs`; an idle board spawns no bd.
  * without a stamp it reads every `pollMs` after the last read exits.
  */
@@ -511,7 +523,7 @@ export class BeadsClient {
     return { issue: normalise(record as Record<string, unknown>), comments: Array.isArray(comments) ? (comments as Comment[]) : [] }
   }
 
-  /** what the store looks like on disk; see storeStamp. null when it is not embedded dolt */
+  /** what the store looks like on disk; see storeStamp. null when there is no local store */
   stamp(): string | null {
     return storeStamp(this.repo)
   }

@@ -105,7 +105,7 @@ describe('storeStamp', () => {
   })
   afterEach(() => rmSync(repo, { recursive: true, force: true }))
 
-  it('is null without an embedded store', () => {
+  it('is null without a local store', () => {
     expect(storeStamp(repo)).toBeNull()
   })
 
@@ -126,5 +126,17 @@ describe('storeStamp', () => {
     expect(grown).not.toBe(first)
     writeFileSync(join(noms, 'manifest'), '5:__DOLT__:root2')
     expect(storeStamp(repo)).not.toBe(grown)
+  })
+  it('reads a server-mode store under .beads/dolt and skips the server dirs', () => {
+    const noms = join(repo, '.beads', 'dolt', 'db', '.dolt', 'noms')
+    mkdirSync(noms, { recursive: true })
+    mkdirSync(join(repo, '.beads', 'dolt', '.dolt', 'noms'), { recursive: true })
+    writeFileSync(join(repo, '.beads', 'dolt', '.dolt', 'noms', 'manifest'), 'server-own')
+    writeFileSync(join(noms, 'manifest'), '5:__DOLT__:root1')
+    const first = storeStamp(repo)
+    expect(first).toContain('db/manifest')
+    expect(first).not.toContain('server-own')
+    writeFileSync(join(noms, 'manifest'), '5:__DOLT__:root2')
+    expect(storeStamp(repo)).not.toBe(first)
   })
 })

@@ -109,7 +109,7 @@ function stringArray(value: unknown, what: string): string[] {
 /** how long a search may reuse the last `bd export` before reading the ledger again */
 const CORPUS_MAX_AGE_MS = 5_000
 const MAX_SEARCH_LIMIT = 500
-// a reconcile on an unchanged embedded store costs a file read, not a bd run; see storeStamp
+// a reconcile on an unchanged local store costs a file read, not a bd run; see storeStamp
 const RECONCILE_MS = 30_000
 const KEEPALIVE_MS = 25_000
 
