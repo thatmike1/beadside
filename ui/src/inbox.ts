@@ -224,8 +224,10 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
         .sort((a, b) => a.priority - b.priority || touchedFirst(a, b))
     : []
 
+  // a check waiting on the human has no deadline, whatever due date it kept from before (TRY-IT.md)
+  const tryLabel = config.tryIt?.label
   const due = live
-    .filter((i) => dueState(i, now) !== null)
+    .filter((i) => !(tryLabel && i.labels.includes(tryLabel)) && dueState(i, now) !== null)
     .sort((a, b) => (a.due_at ?? '').localeCompare(b.due_at ?? ''))
 
   const staleIds = new Set(staleBeads(issues, now, config).map((i) => i.id))

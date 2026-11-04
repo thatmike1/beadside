@@ -1,7 +1,7 @@
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { beforeAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { createApp } from './app'
 import { BeadsClient, type Comment, type IssueWithComments, type RunResult } from './bd'
 import { resolveConfig } from './config'
@@ -134,14 +134,27 @@ describe('try routes', () => {
   const fail = (stderr: string): RunResult => ({ stdout: '', stderr, code: 1 })
 
   /** an app over one bead the canned bd keeps state for: labels, metadata, status and comments */
-  function appFor(opts: { tryIt?: unknown; labels?: string[]; failClose?: boolean; meta?: Record<string, unknown> } = {}) {
+  function appFor(
+    opts: {
+      tryIt?: unknown
+      labels?: string[]
+      failClose?: boolean
+      failRemove?: boolean
+      meta?: Record<string, unknown>
+      status?: string
+      comments?: Comment[]
+      extra?: Record<string, unknown>
+      hosts?: string[]
+    } = {},
+  ) {
     const calls: string[][] = []
     let meta: Record<string, unknown> = opts.meta ?? { try: KIT, quick: { kept: true } }
     let labels = opts.labels ?? ['infra', 'try-it']
-    let status = 'open'
+    let status = opts.status ?? 'open'
     let failClose = opts.failClose ?? false
-    const comments: Comment[] = []
-    const record = () => ({ ...entry('repo-abc', status, labels, meta).issue, comment_count: comments.length })
+    let failRemove = opts.failRemove ?? false
+    const comments: Comment[] = [...(opts.comments ?? [])]
+    const record = () => ({ ...entry('repo-abc', status, labels, meta).issue, ...opts.extra, comment_count: comments.length })
     const runner = async (args: string[]): Promise<RunResult> => {
       calls.push(args)
       if (args[0] === 'export') return ok(`${JSON.stringify({ _type: 'issue', ...record() })}\n`)
@@ -158,6 +171,7 @@ describe('try routes', () => {
         return ok('')
       }
       if (args[0] === 'update') {
+        if (failRemove && args.includes('--remove-label=try-it')) return fail('dolt lock busy')
         for (const arg of args) {
           if (arg.startsWith('--metadata=')) meta = { ...meta, ...(JSON.parse(arg.slice('--metadata='.length)) as object) }
           if (arg.startsWith('--add-label=')) labels = [...new Set([...labels, arg.slice('--add-label='.length)])]
@@ -175,6 +189,7 @@ describe('try routes', () => {
       config: resolveConfig({
         note: { addLabel: 'from-human', offerToClear: ['needs-human'] },
         ...(opts.tryIt === undefined ? { tryIt: {} } : opts.tryIt === null ? {} : { tryIt: opts.tryIt }),
+        ...(opts.hosts ? { hosts: opts.hosts } : {}),
       }),
     })
     return {
@@ -186,6 +201,9 @@ describe('try routes', () => {
       comments,
       healClose: () => {
         failClose = false
+      },
+      healRemove: () => {
+        failRemove = false
       },
     }
   }
@@ -219,18 +237,20 @@ describe('try routes', () => {
     expect(calls).toEqual([])
   })
 
-  it('works: the human comment, the stamp, the close, then the label off; from-human stays off', async () => {
+  it('works: the pending marker, the human comment, the close, then the label off with the stamp; from-human stays off', async () => {
     const { app, calls, meta, labels, status, comments } = appFor()
     const res = await app.request(verdict({ verdict: 'works', note: 'smooth on the S24' }))
     expect(res.status).toBe(200)
     const w = writes(calls)
-    expect(w[0]).toEqual(['comments', 'add', 'repo-abc', '--author=human:tester', '--', expect.stringMatching(/^You tried Drag the reader sheet on your Galaxy: it works\.\n\nExpected: The sheet follows an early drag\.\n\nsmooth on the S24$/)])
-    expect(w[1]).toEqual(['update', 'repo-abc', expect.stringMatching(/^--metadata=/)])
+    expect(w[0]).toEqual(['update', 'repo-abc', expect.stringMatching(/^--metadata=.*"pending":\{"result":"works"/)])
+    expect(w[1]).toEqual(['comments', 'add', 'repo-abc', '--author=human:tester', '--', expect.stringMatching(/^You tried Drag the reader sheet on your Galaxy: it works\.\n\nExpected: The sheet follows an early drag\.\n\nsmooth on the S24$/)])
     expect(w[2]?.[0]).toBe('close')
-    expect(w[3]).toEqual(['update', 'repo-abc', '--remove-label=try-it'])
+    expect(w[3]).toEqual(['update', 'repo-abc', '--remove-label=try-it', expect.stringMatching(/^--metadata=/)])
+    expect(w).toHaveLength(4)
     expect(status()).toBe('closed')
     expect(labels()).toEqual(['infra'])
     expect(meta()).toMatchObject({ quick: { kept: true }, try: { title: KIT.title, last: { result: 'works', note: 'smooth on the S24' } } })
+    expect(meta()['try']).not.toHaveProperty('pending')
     expect(comments).toHaveLength(1)
     const body = (await res.json()) as { verdict: { result: string }; issue: { status: string } }
     expect(body.verdict.result).toBe('works')
@@ -242,9 +262,10 @@ describe('try routes', () => {
     const res = await app.request(verdict({ verdict: 'broken', note: 'it flings shut' }))
     expect(res.status).toBe(200)
     const w = writes(calls)
-    expect(w).toHaveLength(2)
-    expect(w[0]?.at(-1)).toBe('You tried Drag the reader sheet on your Galaxy: still broken.\n\nit flings shut')
-    expect(w[1]).toEqual(['update', 'repo-abc', '--add-label=from-human', '--remove-label=try-it', expect.stringMatching(/^--metadata=/)])
+    expect(w).toHaveLength(3)
+    expect(w[0]).toEqual(['update', 'repo-abc', expect.stringMatching(/^--metadata=.*"pending"/)])
+    expect(w[1]?.at(-1)).toBe('You tried Drag the reader sheet on your Galaxy: still broken.\n\nit flings shut')
+    expect(w[2]).toEqual(['update', 'repo-abc', '--add-label=from-human', '--remove-label=try-it', expect.stringMatching(/^--metadata=/)])
     expect(status()).toBe('open')
     expect(labels()).toEqual(['infra', 'from-human'])
     expect(meta()['try']).toMatchObject({ last: { result: 'broken', note: 'it flings shut' } })
@@ -255,8 +276,9 @@ describe('try routes', () => {
     const res = await app.request(verdict({ verdict: 'cant', note: 'the link is dead' }))
     expect(res.status).toBe(200)
     const w = writes(calls)
-    expect(w[0]?.at(-1)).toBe("You couldn't check Drag the reader sheet on your Galaxy.\n\nthe link is dead")
-    expect(w[1]).toEqual(['update', 'repo-abc', '--add-label=from-human', expect.stringMatching(/^--metadata=/)])
+    expect(w[1]?.at(-1)).toBe("You couldn't check Drag the reader sheet on your Galaxy.\n\nthe link is dead")
+    expect(w[2]).toEqual(['update', 'repo-abc', '--add-label=from-human', expect.stringMatching(/^--metadata=/)])
+    expect(meta()['try']).not.toHaveProperty('pending')
     expect(status()).toBe('open')
     expect(labels()).toEqual(['infra', 'try-it', 'from-human'])
     expect(meta()['try']).toMatchObject({ last: { result: 'cant', note: 'the link is dead' } })
@@ -309,6 +331,157 @@ describe('try routes', () => {
     expect(comments).toHaveLength(1)
     expect(status()).toBe('closed')
     expect(labels()).not.toContain('try-it')
+  })
+
+  it('a failure after the close: closed but labelled, listed nowhere; the next read finishes it, one comment', async () => {
+    const { app, comments, status, labels, meta, healRemove } = appFor({ failRemove: true })
+    const res = await app.request(verdict({ verdict: 'works' }))
+    expect(res.status).toBe(502)
+    expect(((await res.json()) as { error: string }).error).toMatch(/closed but still carries try-it/)
+    expect(status()).toBe('closed')
+    expect(labels()).toContain('try-it')
+    expect(meta()['try']).toMatchObject({ pending: { result: 'works' } })
+    healRemove()
+    const listed = (await (await app.request('/api/tries')).json()) as { tries: unknown[] }
+    expect(listed.tries).toEqual([])
+    await vi.waitFor(() => expect(labels()).not.toContain('try-it'))
+    expect(comments).toHaveLength(1)
+    expect(meta()['try']).toMatchObject({ last: { result: 'works' } })
+    expect(meta()['try']).not.toHaveProperty('pending')
+  })
+
+  it('a failure after the close: the retry the 502 asks for finishes it, one comment', async () => {
+    const { app, comments, status, labels, healRemove } = appFor({ failRemove: true })
+    expect((await app.request(verdict({ verdict: 'works' }))).status).toBe(502)
+    healRemove()
+    const res = await app.request(verdict({ verdict: 'works' }))
+    expect(res.status).toBe(200)
+    expect(comments).toHaveLength(1)
+    expect(status()).toBe('closed')
+    expect(labels()).not.toContain('try-it')
+    // a broken or cant on that closed bead is refused
+    const again = appFor({ failRemove: true })
+    expect((await again.app.request(verdict({ verdict: 'works' }))).status).toBe(502)
+    expect((await again.app.request(verdict({ verdict: 'broken', note: 'x' }))).status).toBe(409)
+  })
+
+  it('finishes a closed, labelled bead an earlier version left with last=works', async () => {
+    const { app, labels, calls } = appFor({ status: 'closed', meta: { try: { ...KIT, last: { result: 'works', at: '2026-11-01T10:00:00Z', note: null } } } })
+    await app.request('/api/issues')
+    await vi.waitFor(() => expect(labels()).not.toContain('try-it'))
+    expect(calls.filter((a) => a[0] === 'comments' && a[1] === 'add')).toEqual([])
+    // a closed labelled bead with no works marker is left alone
+    const other = appFor({ status: 'closed', meta: { try: KIT } })
+    await other.app.request('/api/issues')
+    await new Promise((r) => setTimeout(r, 20))
+    expect(other.labels()).toContain('try-it')
+  })
+
+  it('a retry hours after a partial save still leaves one comment: the pending marker, not a time window', async () => {
+    const at = '2026-11-01T08:00:00.000Z'
+    const text = "You couldn't check Drag the reader sheet on your Galaxy.\n\nno release yet"
+    const { app, comments, labels, meta } = appFor({
+      meta: { try: { ...KIT, pending: { result: 'cant', at, note: 'no release yet' } } },
+      comments: [{ id: 'c0', issue_id: 'repo-abc', author: 'human:tester', text, created_at: '2026-11-01T08:00:01Z' }],
+    })
+    expect((await app.request(verdict({ verdict: 'cant', note: 'no release yet' }))).status).toBe(200)
+    expect(comments).toHaveLength(1)
+    expect(labels()).toContain('from-human')
+    expect(meta()['try']).toMatchObject({ last: { result: 'cant', at } })
+    expect(meta()['try']).not.toHaveProperty('pending')
+  })
+
+  it('a pending marker whose comment never landed gets its comment on the retry', async () => {
+    const { app, comments } = appFor({
+      meta: { try: { ...KIT, pending: { result: 'works', at: '2026-11-01T08:00:00.000Z', note: null } } },
+    })
+    expect((await app.request(verdict({ verdict: 'works' }))).status).toBe(200)
+    expect(comments).toHaveLength(1)
+  })
+
+  it('a repeated cant after an agent replied is a new round with its own comment', async () => {
+    const { app, comments } = appFor()
+    expect((await app.request(verdict({ verdict: 'cant', note: 'no release yet' }))).status).toBe(200)
+    comments.push({ id: 'cx', issue_id: 'repo-abc', author: 'agent:claude', text: 'released, try again', created_at: new Date().toISOString() })
+    expect((await app.request(verdict({ verdict: 'cant', note: 'no release yet' }))).status).toBe(200)
+    expect(comments.filter((c) => c.author === 'human:tester')).toHaveLength(2)
+  })
+
+  it('leaves deferred checks out of the list until they wake', async () => {
+    const future = new Date(Date.now() + 7 * 86_400_000).toISOString()
+    const past = new Date(Date.now() - 86_400_000).toISOString()
+    const ids = async (opts: Parameters<typeof appFor>[0]) =>
+      ((await (await appFor(opts).app.request('/api/tries')).json()) as { tries: { id: string }[] }).tries.map((t) => t.id)
+    expect(await ids({ status: 'deferred' })).toEqual([])
+    expect(await ids({ status: 'deferred', extra: { defer_until: future } })).toEqual([])
+    expect(await ids({ status: 'open', extra: { defer_until: future } })).toEqual([])
+    expect(await ids({ status: 'deferred', extra: { defer_until: past } })).toEqual(['repo-abc'])
+    expect(await ids({ status: 'open', extra: { defer_until: past } })).toEqual(['repo-abc'])
+  })
+
+  describe('host and origin', () => {
+    const session = (host: string) => new Request(`http://${host}/api/session`, { headers: { host } })
+
+    it('serves the session to loopback hosts and configured ones, and refuses a foreign Host', async () => {
+      const { app } = appFor({ hosts: ['box.tailnet.ts.net'] })
+      for (const host of ['127.0.0.1:1338', 'localhost:5173', '[::1]:1338', 'box.tailnet.ts.net:1338', 'BOX.tailnet.ts.net']) {
+        expect((await app.request(session(host))).status, host).toBe(200)
+      }
+      for (const host of ['attacker.example', 'attacker.example:1338', '127.0.0.1.attacker.example:1338', 'box.tailnet.ts.net.evil:1338']) {
+        const res = await app.request(session(host))
+        expect(res.status, host).toBe(403)
+        expect(JSON.stringify(await res.json())).not.toContain(TOKEN)
+      }
+    })
+
+    it('reads hosts from the config, lowercased, and refuses anything that is not a host name', () => {
+      expect(resolveConfig({}).hosts).toEqual([])
+      expect(resolveConfig({ hosts: ['Box.Tailnet.ts.net', 'proxy.lan:8443', '[fd7a::1]'] }).hosts).toEqual(['box.tailnet.ts.net', 'proxy.lan:8443', '[fd7a::1]'])
+      for (const bad of [['two words'], ['http://box'], ['box/path'], [3], 'box']) {
+        expect(() => resolveConfig({ hosts: bad }), JSON.stringify(bad)).toThrowError(/hosts/)
+      }
+    })
+
+    it('a configured host:port matches that port only', async () => {
+      const { app } = appFor({ hosts: ['box.ts.net:1338'] })
+      expect((await app.request(session('box.ts.net:1338'))).status).toBe(200)
+      expect((await app.request(session('box.ts.net:9999'))).status).toBe(403)
+    })
+
+    it('refuses the kit image under a foreign Host', async () => {
+      const png = join(repo, 'host.png')
+      await writeFile(png, Buffer.from([0x89, 0x50, 0x4e, 0x47]))
+      const { app } = appFor({ meta: { try: { ...KIT, kit: [{ type: 'image', src: png }] } } })
+      const url = (host: string) => new Request(`http://${host}/api/tries/repo-abc/image/0`, { headers: { host } })
+      expect((await app.request(url('127.0.0.1:1338'))).status).toBe(200)
+      expect((await app.request(url('attacker.example:1338'))).status).toBe(403)
+    })
+
+    const posted = (headers: Record<string, string>) =>
+      new Request('http://127.0.0.1:1338/api/issues/repo-abc/try/verdict', {
+        method: 'POST',
+        headers: { host: '127.0.0.1:1338', 'content-type': 'application/json', 'x-bd-token': TOKEN, ...headers },
+        body: JSON.stringify({ verdict: 'works' }),
+      })
+
+    it('refuses a verdict from a foreign Origin or Host even with the token, writing nothing', async () => {
+      const { app, calls } = appFor()
+      expect((await app.request(posted({ origin: 'http://attacker.example:1338' }))).status).toBe(403)
+      expect((await app.request(posted({ origin: 'null' }))).status).toBe(403)
+      expect((await app.request(posted({ host: 'attacker.example:1338', origin: 'http://attacker.example:1338' }))).status).toBe(403)
+      expect(writes(calls)).toEqual([])
+    })
+
+    it("accepts the board's own page and an originless server-to-server verdict", async () => {
+      const page = appFor({ hosts: ['box.tailnet.ts.net'] })
+      expect((await page.app.request(posted({ origin: 'https://box.tailnet.ts.net:1338' }))).status).toBe(200)
+      const local = appFor()
+      expect((await local.app.request(posted({ origin: 'http://127.0.0.1:1338' }))).status).toBe(200)
+      // home base forwards from its own server: no Origin, only the token
+      const forwarded = appFor()
+      expect((await forwarded.app.request(posted({}))).status).toBe(200)
+      expect(forwarded.status()).toBe('closed')
+    })
   })
 
   it('serves a local kit image by its index, and nothing a kit does not name', async () => {

@@ -133,6 +133,8 @@ export interface BoardConfig {
   capture?: CaptureConfig
   asks?: AsksConfig | null
   tryIt?: TryItConfig | null
+  /** extra Host names the board answers under, besides loopback: a tailscale or proxy name */
+  hosts?: string[]
 }
 
 export interface ResolvedBoardConfig {
@@ -153,8 +155,13 @@ export interface ResolvedBoardConfig {
   asks: ResolvedAsksConfig | null
   /** checks only the human can make, given a verdict from the board; null keeps the feature off */
   tryIt: ResolvedTryItConfig | null
+  /** Host names the board answers under besides loopback, lowercased; `name` or `name:port` */
+  hosts: string[]
   derived: ResolvedDerivedConfig
 }
+
+/** a host name with an optional port: letters, digits, dots and dashes, or a bracketed ipv6 address */
+const HOST_NAME = /^(?:[a-z0-9](?:[a-z0-9-]{0,62})(?:\.[a-z0-9](?:[a-z0-9-]{0,62}))*|\[[0-9a-f:.]+\])(?::\d{1,5})?$/
 
 /** what a metadata key may look like: it goes to bd inside a JSON object, never as a flag */
 const METADATA_KEY = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/
@@ -394,6 +401,18 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     tryIt = { label, key, title, note }
   }
 
+  const hosts: string[] = []
+  if (obj['hosts'] !== undefined && obj['hosts'] !== null) {
+    if (!Array.isArray(obj['hosts'])) throw new ConfigError('hosts must be an array of host names', 'hosts')
+    for (const entry of obj['hosts']) {
+      const host = typeof entry === 'string' ? entry.trim().toLowerCase() : ''
+      if (!HOST_NAME.test(host)) {
+        throw new ConfigError('each of hosts must be a host name, optionally with :port, like box.tailnet.ts.net', 'hosts')
+      }
+      hosts.push(host)
+    }
+  }
+
   const allFlagsSet = new Set<string>([
     ...waiting.labels,
     ...(noteConfig.addLabel ? [noteConfig.addLabel] : []),
@@ -429,6 +448,7 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     capture,
     asks,
     tryIt,
+    hosts,
     derived,
   }
 }

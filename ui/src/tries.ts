@@ -127,6 +127,16 @@ export function isReadyToTry(issue: Issue, config: BoardConfig): boolean {
   return !!config.tryIt && issue.status !== 'closed' && issue.labels.includes(config.tryIt.label)
 }
 
+/**
+ * snoozed or iced: bd's deferred status, or a defer date still ahead. a snooze whose date has
+ * passed counts as awake, as bd reopens it on its next ready read. the same reading as server/tries.ts
+ */
+export function isDeferred(issue: Issue, now: Date): boolean {
+  const until = issue.defer_until ? Date.parse(issue.defer_until) : Number.NaN
+  if (Number.isFinite(until)) return until > now.getTime()
+  return issue.status === 'deferred'
+}
+
 /** the bead's check when it is ready to try; null otherwise, or when it carries the label with no readable kit */
 export function tryOf(issue: Issue, config: BoardConfig): TryKit | null {
   if (!config.tryIt || !isReadyToTry(issue, config)) return null
@@ -139,13 +149,16 @@ export interface TryGroup {
   issues: Issue[]
 }
 
-/** every bead ready to try, grouped by `try.app` (alphabetical, unnamed last), titles sorted within */
-export function readyToTry(issues: Issue[], config: BoardConfig): TryGroup[] {
+/**
+ * every bead ready to try, grouped by `try.app` (alphabetical, unnamed last), titles sorted within.
+ * a deferred check stays out until it wakes; its own page still shows the check
+ */
+export function readyToTry(issues: Issue[], config: BoardConfig, now = new Date()): TryGroup[] {
   if (!config.tryIt) return []
   const key = config.tryIt.key
   const groups = new Map<string | null, { issue: Issue; title: string }[]>()
   for (const issue of issues) {
-    if (!isReadyToTry(issue, config)) continue
+    if (!isReadyToTry(issue, config) || isDeferred(issue, now)) continue
     const kit = parseTry(issue.metadata, key)
     const app = kit?.app ?? null
     const list = groups.get(app) ?? []

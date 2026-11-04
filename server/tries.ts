@@ -182,29 +182,106 @@ export function verdictComment(verdict: Verdict, title: string, note: string | n
   return `You couldn't check ${title}.\n\n${note ?? ''}`.trim()
 }
 
-/** the stored kit with `last` set; every other field is kept as written */
+/** a note as `try.last` and `try.pending` store it, cut at MAX_NOTE_TEXT; the comment carries the whole of it */
+export function storedNote(note: string | null): string | null {
+  return note && note.length > MAX_NOTE_TEXT ? `${note.slice(0, MAX_NOTE_TEXT - 1)}…` : note
+}
+
+/** the stored kit with `last` set and any `pending` marker gone; every other field is kept as written */
 export function withLast(
   raw: Record<string, unknown>,
   last: { result: Verdict; at: Date; note: string | null },
 ): Record<string, unknown> {
-  const note = last.note && last.note.length > MAX_NOTE_TEXT ? `${last.note.slice(0, MAX_NOTE_TEXT - 1)}…` : last.note
-  return { ...raw, last: { result: last.result, at: last.at.toISOString(), note } }
+  const { pending: _pending, ...rest } = raw
+  return { ...rest, last: { result: last.result, at: last.at.toISOString(), note: storedNote(last.note) } }
 }
 
-/** true when the human's latest comment is `text`, left within `windowMs`: the verdict's comment landed already */
-export function verdictPosted(comments: Comment[], author: string, text: string, now: Date, windowMs = 15 * 60_000): boolean {
-  const mine = comments.filter((c) => c.author === author)
-  const last = mine[mine.length - 1]
-  if (!last || last.text.trim() !== text.trim()) return false
-  const at = Date.parse(last.created_at)
-  return Number.isFinite(at) && now.getTime() - at <= windowMs
+/**
+ * the stored kit with a `pending` marker: a verdict whose comment is about to be written and whose
+ * labels, status and `last` are not settled yet. written before the comment, so a retry at any
+ * later time can tell that comment is its own and never posts it twice
+ */
+export function withPending(
+  raw: Record<string, unknown>,
+  pending: { result: Verdict; at: Date; note: string | null },
+): Record<string, unknown> {
+  return { ...raw, pending: { result: pending.result, at: pending.at.toISOString(), note: storedNote(pending.note) } }
 }
 
-/** every bead that is not closed and carries the label, kit or not, sorted by app then title */
-export function tryEntries(corpus: IssueWithComments[], label: string, key: string): TryEntry[] {
+/** the unfinished verdict a `pending` marker records, or null */
+export function parsePending(raw: Record<string, unknown> | null): TryLast | null {
+  return raw ? parseLast(raw['pending']) : null
+}
+
+// bd stores comment times to the second, the marker to the millisecond
+const CLOCK_SLACK_MS = 1_000
+
+const sameText = (a: string, b: string) => a.trim() === b.trim()
+const notBefore = (iso: string, since: string) => {
+  const at = Date.parse(iso)
+  const from = Date.parse(since)
+  return Number.isFinite(at) && Number.isFinite(from) && at >= from - CLOCK_SLACK_MS
+}
+
+/**
+ * whether the comment for this verdict is already on the bead, so a retry finishes the rest
+ * without a second one. two cases, neither with a time window:
+ * - an unfinished verdict (`pending`) with the same result and note: its comment is any of the
+ *   human's comments with this text written since the marker
+ * - a finished one (`last`) with the same result and note, whose comment is still the newest on
+ *   the bead: a double click or a resent cant. once anyone comments after it, it is a new round
+ */
+export function verdictPosted(
+  raw: Record<string, unknown> | null,
+  comments: Comment[],
+  author: string,
+  verdict: Verdict,
+  note: string | null,
+  text: string,
+): { posted: boolean; at: string } | null {
+  const matches = (mark: TryLast | null) => mark && mark.result === verdict && mark.note === storedNote(note)
+  const pending = parsePending(raw)
+  if (pending && matches(pending)) {
+    const posted = comments.some((c) => c.author === author && sameText(c.text, text) && notBefore(c.created_at, pending.at))
+    return { posted, at: pending.at }
+  }
+  const last = raw ? parseLast(raw['last']) : null
+  const newest = comments[comments.length - 1]
+  if (last && matches(last) && newest && newest.author === author && sameText(newest.text, text) && notBefore(newest.created_at, last.at)) {
+    return { posted: true, at: last.at }
+  }
+  return null
+}
+
+/**
+ * a Works verdict that closed its bead but did not get the label off: closed, still labelled, and
+ * the kit says works (`pending`, or `last` as an earlier version left it). nothing lists a closed
+ * bead, so the server finishes these itself
+ */
+export function unfinishedWorks(issue: Issue, label: string, key: string): TryLast | null {
+  if (issue.status !== 'closed' || !issue.labels.includes(label)) return null
+  const raw = rawTry(issue['metadata'], key)
+  const pending = parsePending(raw)
+  if (pending) return pending.result === 'works' ? pending : null
+  const last = raw ? parseLast(raw['last']) : null
+  return last?.result === 'works' ? last : null
+}
+
+/**
+ * snoozed or iced: bd's deferred status, or a defer date still ahead. a snooze whose date has
+ * passed counts as awake, as bd reopens it on its next ready read
+ */
+export function isDeferred(issue: Issue, now: Date): boolean {
+  const until = typeof issue['defer_until'] === 'string' ? Date.parse(issue['defer_until'] as string) : Number.NaN
+  if (Number.isFinite(until)) return until > now.getTime()
+  return issue.status === 'deferred'
+}
+
+/** every bead that is not closed or deferred and carries the label, kit or not, sorted by app then title */
+export function tryEntries(corpus: IssueWithComments[], label: string, key: string, now = new Date()): TryEntry[] {
   const out: TryEntry[] = []
   for (const { issue } of corpus) {
-    if (issue.status === 'closed' || !issue.labels.includes(label)) continue
+    if (issue.status === 'closed' || !issue.labels.includes(label) || isDeferred(issue, now)) continue
     out.push({ id: issue.id, title: issue.title, status: issue.status, try: parseTry(issue['metadata'], key) })
   }
   const app = (e: TryEntry) => e.try?.app ?? '￿'

@@ -173,7 +173,7 @@ The shipping agent labels the bead and stores the check with `bd update <id> --m
 - **Still broken**: your comment with what you saw, the note flag on, the label off; the bead goes back to normal agent work
 - **Couldn't check**: your comment with what stopped you, the note flag on, the label kept, so an agent fixes the obstacle
 
-The last two ask for a short note first. Every verdict is recorded under `try.last`. Another local page can list and settle checks through its own server with `GET /api/tries` and `POST /api/issues/<id>/try/verdict` (see `docs/api.md`).
+The last two ask for a short note first. Every verdict is recorded under `try.last`. A check keeps no deadline: a due date it carried from before does not put it in the inbox. A deferred check (`bd defer`, with or without `--until`) leaves the ready-to-try view until it wakes, and its own page still takes a verdict. If a verdict is cut short after its comment, sending it again finishes it without a second comment, however much later; a Works that closed the bead but did not get the label off is finished by the board itself on its next read. Another local page can list and settle checks through its own server with `GET /api/tries` and `POST /api/issues/<id>/try/verdict` (see `docs/api.md`).
 
 ### project labels
 
@@ -318,6 +318,14 @@ sudo tailscale serve --https=1338 off                         # undo
 ```
 
 Anyone who can open the page can write to the ledger, so keep the proxy private.
+
+The board answers only requests whose `Host` names it: `127.0.0.1`, `localhost` or `[::1]` on any port, and the names listed in `hosts` in `.beadside.json`. A proxy that passes the browser's host through, as `tailscale serve` does, needs that name listed:
+
+```json
+"hosts": ["box.tailnet-name.ts.net"]
+```
+
+An entry matches that name on any port, or only one port when written as `name:port`. A request under any other name gets 403, which stops a page that rebinds its own DNS name to `127.0.0.1` from reading the session token or the data. Writes from a browser must also carry an `Origin` on an allowed host; a server forwarding a write (no `Origin`) needs only the token. This check arrived in November 2026: a board reached through a proxy under its own name stops answering until that name is in `hosts`.
 
 ## develop
 

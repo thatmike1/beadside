@@ -34,9 +34,11 @@ import {
   parseTry,
   rawTry,
   tryEntries,
+  unfinishedWorks,
   verdictComment,
   verdictPosted,
   withLast,
+  withPending,
   type TryLast,
 } from './tries'
 
@@ -91,6 +93,40 @@ export function idsOriginAllowed(origin: string): boolean {
   }
 }
 
+const LOOPBACK_NAMES = new Set(['127.0.0.1', 'localhost', '[::1]'])
+
+/** a Host value's hostname, lowercased, with any port dropped; `[::1]:1338` keeps its brackets */
+function hostnameOf(host: string): string {
+  const h = host.trim().toLowerCase()
+  if (h.startsWith('[')) return h.slice(0, h.indexOf(']') + 1)
+  const colon = h.lastIndexOf(':')
+  return colon === -1 ? h : h.slice(0, colon)
+}
+
+/**
+ * whether a request's Host names this board: a loopback name on any port (the board, or the vite
+ * dev server proxying to it), or an entry of `hosts` in the config, which matches its hostname on
+ * any port, or only that port when it names one. anything else is a page that resolved its own
+ * name to this machine (dns rebinding), which must not read the session token or the data
+ */
+export function hostAllowed(host: string | undefined, hosts: readonly string[]): boolean {
+  if (!host) return false
+  const h = host.trim().toLowerCase()
+  const name = hostnameOf(h)
+  if (LOOPBACK_NAMES.has(name)) return true
+  return hosts.some((entry) => (entry.includes(':') && !entry.startsWith('[') ? entry === h : entry === name || entry === h))
+}
+
+/** whether a write's Origin is one of this board's own pages: http(s) on an allowed host */
+export function originAllowed(origin: string, hosts: readonly string[]): boolean {
+  try {
+    const url = new URL(origin)
+    return (url.protocol === 'http:' || url.protocol === 'https:') && hostAllowed(url.host, hosts)
+  } catch {
+    return false
+  }
+}
+
 function tokenMatches(given: string, expected: string): boolean {
   const a = Buffer.from(given)
   const b = Buffer.from(expected)
@@ -136,6 +172,7 @@ const MAX_SEARCH_LIMIT = 500
 // a reconcile on an unchanged local store costs a file read, not a bd run; see storeStamp
 const RECONCILE_MS = 30_000
 const KEEPALIVE_MS = 25_000
+const SETTLE_RETRY_MS = 60_000
 
 interface CorpusEntry {
   at: number
@@ -179,6 +216,7 @@ export function createBoard(config: AppConfig): Board {
         const entry = { at: Date.now(), corpus, fingerprint: fingerprintOf(corpus) }
         exportedStamp = stamp
         if (started === generation) cache = entry
+        settleUnfinished(corpus)
         return entry
       })
       .finally(() => {
@@ -253,6 +291,29 @@ export function createBoard(config: AppConfig): Board {
     return next
   }
 
+  // a works verdict that closed its bead and failed to take the label off leaves a bead nothing
+  // lists any more; every export finds those and finishes them, each at most once a minute
+  const settleTried = new Map<string, number>()
+  const settleUnfinished = (corpus: IssueWithComments[]) => {
+    const tries = boardConfig.tryIt
+    if (!tries) return
+    for (const { issue } of corpus) {
+      if (!unfinishedWorks(issue, tries.label, tries.key)) continue
+      if (Date.now() - (settleTried.get(issue.id) ?? 0) < SETTLE_RETRY_MS) continue
+      settleTried.set(issue.id, Date.now())
+      void serialise(async () => {
+        // read fresh: a session may have reopened or relabelled it meanwhile
+        const fresh = await client.issue(issue.id)
+        const unfinished = unfinishedWorks(fresh, tries.label, tries.key)
+        if (!unfinished) return
+        const outcome = await finishWorks(issue.id, rawTry(fresh['metadata'], tries.key) ?? {}, unfinished)
+        if (outcome.failed) throw new Error(outcome.failed.error)
+      }).catch((error: unknown) => {
+        liveOptions?.log?.(`finishing ${issue.id} failed: ${error instanceof Error ? error.message : String(error)}`)
+      })
+    }
+  }
+
   const app = new Hono()
   const createdHere = new Set<string>()
 
@@ -262,9 +323,24 @@ export function createBoard(config: AppConfig): Board {
     return c.json({ error: message }, 500)
   })
 
-  // every write needs the per-launch token
+  // every request must name this board in its Host, so a rebound dns name gets nothing, the
+  // session token least of all
+  app.use('*', async (c, next) => {
+    const host = c.req.header('host') ?? new URL(c.req.url).host
+    if (!hostAllowed(host, boardConfig.hosts)) {
+      return c.json({ error: `unknown host ${host}: add it to hosts in .beadside.json to reach the board under it` }, 403)
+    }
+    return next()
+  })
+
+  // every write needs the per-launch token, and a browser's write must come from the board's own
+  // pages; a server forwarding a write sends no Origin and needs only the token
   app.use('/api/*', async (c, next) => {
     if (c.req.method !== 'POST' && c.req.method !== 'DELETE') return next()
+    const origin = c.req.header('origin')
+    if (origin !== undefined && !originAllowed(origin, boardConfig.hosts)) {
+      return c.json({ error: `writes from ${origin} are refused` }, 403)
+    }
     if (!tokenMatches(c.req.header('x-bd-token') ?? '', token)) {
       return c.json({ error: 'invalid or missing x-bd-token' }, 403)
     }
@@ -524,23 +600,32 @@ export function createBoard(config: AppConfig): Board {
       if (!issue.labels.includes(tries.label)) {
         throw new BdError(`${id} no longer carries ${tries.label}: the check is already settled`, 409)
       }
+      const raw = rawTry(issue['metadata'], tries.key) ?? {}
+      if (issue.status === 'closed') {
+        // only a works whose close landed and whose label did not: finish it, the comment is there
+        const unfinished = unfinishedWorks(issue, tries.label, tries.key)
+        if (verdict !== 'works' || !unfinished) throw new BdError(`${id} is closed: the check is already settled`, 409)
+        return finishWorks(id, raw, unfinished)
+      }
       const kit = parseTry(issue['metadata'], tries.key)
       const text = verdictComment(verdict, kit?.title ?? issue.title, note, kit?.expect ?? null)
-      const now = new Date()
-      const value = withLast(rawTry(issue['metadata'], tries.key) ?? {}, { result: verdict, at: now, note })
+      // a retry, at any later time, finishes the rest under its first marker without a second comment
+      const seen = verdictPosted(raw, comments, human.id, verdict, note, text)
+      const at = seen ? new Date(seen.at) : new Date()
+      if (!seen) await client.amend(id, { metadata: { key: tries.key, value: withPending(raw, { result: verdict, at, note }) } })
+      if (!seen?.posted) await client.comment(id, text)
+      const value = withLast(raw, { result: verdict, at, note })
       const metadata = { key: tries.key, value }
       const last = value['last'] as TryLast
-      // a retry whose comment landed finishes the rest without a second comment
-      if (!verdictPosted(comments, human.id, text, now)) await client.comment(id, text)
       // from here the comment is on the bead; a failure says what state it left
       let state = verdict === 'works' ? 'the bead is still open' : `its labels and ${tries.key}.last did not change`
       try {
         if (verdict === 'works') {
-          // the label comes off last: a failed close leaves it on, so a retry can finish the job
-          await client.amend(id, { metadata })
+          // the label comes off last, with the marker: a failed close leaves both on, so a retry can
+          // finish the job, and a closed bead still carrying them is finished on the next read
           await client.setStatus(id, 'closed', 'tried on the real thing: it works')
-          state = `the bead is closed but still carries ${tries.label}`
-          await client.amend(id, { remove: [tries.label] })
+          state = `the bead is closed but still carries ${tries.label}; the board finishes that on its next read`
+          await client.amend(id, { remove: [tries.label], metadata })
         } else {
           await client.amend(id, {
             add: flag ? [flag] : [],
@@ -607,6 +692,21 @@ export function createBoard(config: AppConfig): Board {
     app.use('/*', serveStatic({ root: uiDist }))
     // client-side routes fall back to the spa shell
     app.get('/*', serveStatic({ path: `${uiDist}/index.html` }))
+  }
+
+  /** the last write of a works verdict: the label off, `last` from the marker, the marker gone */
+  async function finishWorks(id: string, raw: Record<string, unknown>, unfinished: TryLast) {
+    const tries = boardConfig.tryIt!
+    const value = withLast(raw, { result: 'works', at: new Date(unfinished.at), note: unfinished.note })
+    try {
+      await client.amend(id, { remove: [tries.label], metadata: { key: tries.key, value } })
+    } catch (error) {
+      return {
+        last: value['last'] as TryLast,
+        failed: { state: `the bead is closed but still carries ${tries.label}`, error: error instanceof Error ? error.message : String(error) },
+      }
+    }
+    return { last: value['last'] as TryLast, failed: null }
   }
 
   /** issue plus its comments, the two joins, and when the human's latest note was read */

@@ -94,6 +94,40 @@ describe('the try model', () => {
     expect(readyToTry(issues, { ...CONFIG, tryIt: null })).toEqual([])
   })
 
+  it('leaves deferred checks out of the list until they wake', () => {
+    const day = 86_400_000
+    const ahead = new Date(NOW.getTime() + 7 * day).toISOString()
+    const behind = new Date(NOW.getTime() - day).toISOString()
+    const issues = [
+      bead('iced', { status: 'deferred' }),
+      bead('snoozed', { status: 'deferred', defer_until: ahead }),
+      bead('dated', { defer_until: ahead }),
+      bead('woke', { status: 'deferred', defer_until: behind }),
+      bead('open', { defer_until: behind }),
+    ]
+    expect(readyToTry(issues, CONFIG, NOW).flatMap((g) => g.issues.map((i) => i.id))).toEqual(['repo-open', 'repo-woke'])
+    // its own page still shows the check, so a verdict can be given while it sleeps
+    expect(tryOf(issues[0]!, CONFIG)).not.toBeNull()
+  })
+
+  it('a due date a check kept from before never puts it in the inbox', () => {
+    const due = (at: Date) => buildInbox([bead('due', { due_at: at.toISOString() })], { config: CONFIG, now: NOW, seen: {}, picks: [], read: [], holding: null })
+    const overdue = due(new Date(2026, 9, 1))
+    expect(overdue.sections.find((s) => s.key === 'due')).toBeUndefined()
+    expect(overdue.count).toBe(0)
+    expect(due(new Date(NOW.getTime() + 86_400_000)).count).toBe(0)
+    // the same bead without the label is due as before
+    const plain = buildInbox([bead('due', { labels: ['infra'], due_at: new Date(2026, 9, 1).toISOString() })], {
+      config: CONFIG,
+      now: NOW,
+      seen: {},
+      picks: [],
+      read: [],
+      holding: null,
+    })
+    expect(plain.sections.find((s) => s.key === 'due')?.rows.map((i) => i.id)).toEqual(['repo-due'])
+  })
+
   it('never calls a check stale and keeps it out of the inbox', () => {
     const old = bead('old')
     expect(isStale(old, NOW, CONFIG)).toBe(false)
