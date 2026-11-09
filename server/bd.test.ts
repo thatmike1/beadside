@@ -239,6 +239,19 @@ describe('status transitions', () => {
     expect(write(b.calls)).toEqual([['close', 'repo-abc', '--reason', 'done']])
   })
 
+  it('drops another actor claim before closing, and keeps its own', async () => {
+    const a = clientFor('open', { assignee: 'agent:codex' }, 'human:mike')
+    await a.client.setStatus('repo-abc', 'closed')
+    expect(write(a.calls)).toEqual([
+      ['update', 'repo-abc', '--assignee', '', '--force'],
+      ['close', 'repo-abc', '--reason', 'closed from beadside'],
+    ])
+
+    const b = clientFor('open', { assignee: 'human:mike' }, 'human:mike')
+    await b.client.setStatus('repo-abc', 'closed')
+    expect(write(b.calls)).toEqual([['close', 'repo-abc', '--reason', 'closed from beadside']])
+  })
+
   it('defers, with --until when given', async () => {
     const a = clientFor('open')
     await a.client.setStatus('repo-abc', 'deferred')

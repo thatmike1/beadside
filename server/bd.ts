@@ -594,6 +594,10 @@ export class BeadsClient {
     if (current.status === status && !(status === 'deferred' && until)) return current
 
     if (status === 'closed') {
+      // bd refuses to close an issue another actor holds; a close from the board is the human's
+      // call, so it drops that claim first. only the assignee is forced, never blockers or gates
+      const assignee = typeof current['assignee'] === 'string' ? current['assignee'] : ''
+      if (assignee && assignee !== this.actor) await this.run(['update', id, '--assignee', '', '--force'])
       await this.run(['close', id, '--reason', reason?.trim() || 'closed from beadside'])
     } else if (status === 'deferred') {
       const args = ['defer', id]
