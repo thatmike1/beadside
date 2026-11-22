@@ -51,6 +51,7 @@
   --font-body-size: 15.25px;
   --font-body-leading: 1.65;
   --font-body-tracking: -0.002em;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 :root[data-font='ubuntu'] {
@@ -120,7 +121,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 .mono {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.79em;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;
@@ -186,20 +187,68 @@ textarea {
   font-size: 12px;
 }
 .brand .theme {
-  margin-left: auto;
   align-self: center;
   font-size: 12px;
   padding: 2px 7px;
   border-radius: 3px;
   color: var(--ink-3);
 }
-.brand .stale + .theme,
-.brand .theme + .fontpick {
-  margin-left: 0;
-}
-.brand .theme:hover {
+.brand .theme:hover,
+.brand .theme.on {
   background: var(--fill);
   color: var(--ink-2);
+}
+
+/* ---------- the look menu: theme, light or dark, body font ---------- */
+.lookmenu {
+  position: relative;
+  align-self: center;
+  display: inline-flex;
+  margin-left: auto;
+}
+.brand .stale + .lookmenu {
+  margin-left: 0;
+}
+.looks {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 20;
+  display: grid;
+  gap: 8px;
+  width: max-content;
+  padding: 11px 14px 12px;
+  border-radius: 6px;
+  background: var(--bg-read);
+  box-shadow:
+    0 0 0 1px var(--rule),
+    0 14px 30px -14px var(--shadow);
+  font-size: 12.75px;
+  line-height: 1.4;
+  color: var(--ink-2);
+}
+.lrow {
+  display: grid;
+  grid-template-columns: 52px auto;
+  justify-content: start;
+  align-items: center;
+  gap: 10px;
+}
+.lrow .lab {
+  color: var(--ink-3);
+  font-size: 12px;
+}
+.lrow .seg {
+  justify-self: start;
+  flex-wrap: nowrap;
+}
+.looks .seg button[disabled]:not(.on) {
+  opacity: 0.45;
+}
+.lnote {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: 12px;
 }
 .counts {
   margin-top: 6px;
@@ -755,7 +804,7 @@ textarea {
   color: var(--ink);
 }
 .cleared kbd {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   margin-left: 4px;
   color: var(--ink-3);
@@ -811,7 +860,7 @@ textarea {
   gap: 3px;
 }
 .keys kbd {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   background: rgb(var(--tint) / 0.07);
   border-radius: 3px;
@@ -871,7 +920,7 @@ textarea {
   margin-right: 2px;
 }
 .stepper button {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 11.5px;
   padding: 2px 6px;
   border-radius: 3px;
@@ -885,11 +934,42 @@ textarea {
   background: var(--ink);
   color: var(--on-ink);
 }
-.verbs {
+/* the status switch: one segment per status, the current one inked */
+.segments {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 4px;
 }
-.verbs button,
+.segments .lab {
+  margin-right: 2px;
+}
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  background: var(--fill);
+  border-radius: 4px;
+  padding: 2px;
+}
+.seg button {
+  white-space: nowrap;
+  padding: 1px 9px;
+  border-radius: 3px;
+  color: var(--ink-2);
+  font-size: 12.75px;
+}
+.seg button:hover:not([disabled]):not(.on) {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+.seg button.on {
+  background: var(--ink);
+  color: var(--on-ink);
+  cursor: default;
+}
+.seg button[disabled] {
+  cursor: default;
+}
 .labeled button.add {
   padding: 2px 9px;
   border-radius: 3px;
@@ -897,7 +977,6 @@ textarea {
   color: var(--ink-2);
   font-size: 12.75px;
 }
-.verbs button:hover,
 .labeled button.add:hover {
   background: var(--fill-2);
   color: var(--ink);
@@ -1452,7 +1531,7 @@ h2.chsub {
   color: var(--signal-ink);
 }
 .md code {
-  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.84em;
   background: var(--fill);
   border-radius: 3px;
@@ -1917,7 +1996,7 @@ h2.chsub {
     font-size: 13px;
     padding: 6px 8px;
   }
-  .verbs button,
+  .seg button,
   .labeled button.add {
     font-size: 14px;
     padding: 6px 13px;
@@ -2017,4 +2096,17 @@ h2.chsub {
   .hit:not(.sel):hover {
     background: none;
   }
+}
+
+/* ---------- pieces only the atlas theme draws (theme-atlas.css); the default look leaves them out ---------- */
+.sheet {
+  display: contents;
+}
+.brand-dot,
+.route,
+.hint,
+.search > .icon,
+.capture > .icon,
+.sechead > .icon {
+  display: none;
 }

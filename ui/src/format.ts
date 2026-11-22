@@ -1,26 +1,27 @@
 // small display helpers shared by the panes
 
-import type { BoardConfig } from './api'
+import type { BoardConfig, Locale } from './api'
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
-/** 3 Sep 2026 */
-export function formatDate(iso: string | null | undefined): string {
+/** 3 Sep 2026, or 3. 9. 2026 in czech */
+export function formatDate(iso: string | null | undefined, locale: Locale = 'en'): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
+  if (locale === 'cs') return `${d.getDate()}. ${d.getMonth() + 1}. ${d.getFullYear()}`
   return `${d.getDate()} ${MONTHS[d.getMonth()] ?? ''} ${d.getFullYear()}`
 }
 
 /** 3 Sep 2026 17:35, local time, for comments where the hour matters */
-export function formatDateTime(iso: string | null | undefined): string {
-  const day = formatDate(iso)
+export function formatDateTime(iso: string | null | undefined, locale: Locale = 'en'): string {
+  const day = formatDate(iso, locale)
   return day ? `${day} ${formatTime(iso)}` : ''
 }
 
 /** 3 Sep 17:35, for tight spots where the hour matters */
-export function formatShortDateTime(iso: string | null | undefined): string {
-  const day = formatShortDate(iso)
+export function formatShortDateTime(iso: string | null | undefined, locale: Locale = 'en'): string {
+  const day = formatShortDate(iso, locale)
   return day ? `${day} ${formatTime(iso)}` : ''
 }
 
@@ -33,17 +34,32 @@ const RELATIVE_STEPS: { unit: string; ms: number }[] = [
   { unit: 'minute', ms: 60_000 },
 ]
 
+/** czech forms per unit: after "před" (1, 2-4, 5+) and after "za" (1, 2-4, 5+) */
+const CS_UNITS: Record<string, { ago: [string, string, string]; ahead: [string, string, string] }> = {
+  year: { ago: ['rokem', 'roky', 'lety'], ahead: ['rok', 'roky', 'let'] },
+  month: { ago: ['měsícem', 'měsíci', 'měsíci'], ahead: ['měsíc', 'měsíce', 'měsíců'] },
+  week: { ago: ['týdnem', 'týdny', 'týdny'], ahead: ['týden', 'týdny', 'týdnů'] },
+  day: { ago: ['dnem', 'dny', 'dny'], ahead: ['den', 'dny', 'dní'] },
+  hour: { ago: ['hodinou', 'hodinami', 'hodinami'], ahead: ['hodinu', 'hodiny', 'hodin'] },
+  minute: { ago: ['minutou', 'minutami', 'minutami'], ahead: ['minutu', 'minuty', 'minut'] },
+}
+
+function csForm(n: number, forms: [string, string, string]): string {
+  return n === 1 ? forms[0] : n >= 2 && n <= 4 ? forms[1] : forms[2]
+}
+
 /**
- * "2 days ago", "in 3 hours", "just now": elapsed time in whole units, for the hover title on a
- * date. weeks start at 14 days and months at 60, so "10 days ago" stays exact
+ * "2 days ago", "in 3 hours", "just now" (in czech "před 2 dny", "za 3 hodiny", "právě teď"):
+ * elapsed time in whole units, for the hover title on a date. weeks start at 14 days and months
+ * at 60, so "10 days ago" stays exact
  */
-export function relativeTime(iso: string | null | undefined, now: Date = new Date()): string {
+export function relativeTime(iso: string | null | undefined, now: Date = new Date(), locale: Locale = 'en'): string {
   if (!iso) return ''
   const t = Date.parse(iso)
   if (Number.isNaN(t)) return ''
   const diff = now.getTime() - t
   const abs = Math.abs(diff)
-  if (abs < 45_000) return 'just now'
+  if (abs < 45_000) return locale === 'cs' ? 'právě teď' : 'just now'
   const step =
     RELATIVE_STEPS.find((s) => {
       if (s.unit === 'week') return abs >= 14 * 86_400_000
@@ -51,15 +67,20 @@ export function relativeTime(iso: string | null | undefined, now: Date = new Dat
       return abs >= s.ms
     }) ?? RELATIVE_STEPS[RELATIVE_STEPS.length - 1]!
   const n = Math.max(1, Math.floor(abs / step.ms))
+  if (locale === 'cs') {
+    const forms = CS_UNITS[step.unit]!
+    return diff >= 0 ? `před ${n} ${csForm(n, forms.ago)}` : `za ${n} ${csForm(n, forms.ahead)}`
+  }
   const phrase = `${n} ${step.unit}${n === 1 ? '' : 's'}`
   return diff >= 0 ? `${phrase} ago` : `in ${phrase}`
 }
 
-/** 3 Sep, for tight columns */
-export function formatShortDate(iso: string | null | undefined): string {
+/** 3 Sep, or 3. 9. in czech, for tight columns */
+export function formatShortDate(iso: string | null | undefined, locale: Locale = 'en'): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
+  if (locale === 'cs') return `${d.getDate()}. ${d.getMonth() + 1}.`
   return `${d.getDate()} ${MONTHS[d.getMonth()] ?? ''}`
 }
 

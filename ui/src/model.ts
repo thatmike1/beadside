@@ -57,11 +57,32 @@ export interface Board {
   byId: Map<string, Issue>
 }
 
+/** the section copy the model writes itself; lanes, waiting and thoughts take theirs from the config */
+export interface SectionStrings {
+  pinned: string
+  pinnedNote: string
+  deferred: string
+  deferredNote: string
+  closed: string
+  closedNote: string
+}
+
+export const EN_SECTIONS: SectionStrings = {
+  pinned: 'pinned',
+  pinnedNote: 'standing beads, kept in view',
+  deferred: 'deferred',
+  deferredNote: 'parked until you pick them up',
+  closed: 'recently closed',
+  closedNote: 'the last twelve struck through',
+}
+
 export interface BoardOptions {
   config: BoardConfig
   repoName: string
   /** stored fold state; `fallback` is the default for a section nobody has touched */
   isFolded: (sectionKey: string, fallback: boolean) => boolean
+  /** the copy for the sections the model titles itself; english when left out */
+  strings?: SectionStrings
 }
 
 /** drops the repo prefix: demo-9fz becomes 9fz */
@@ -233,6 +254,7 @@ function groupLane(list: Issue[], opts: BoardOptions, byId: Map<string, Issue>):
  * and the counts for the header line.
  */
 export function buildBoard(issues: Issue[], opts: BoardOptions): Board {
+  const text = opts.strings ?? EN_SECTIONS
   const byId = new Map(issues.map((i) => [i.id, i]))
   const live = issues.filter((i) => i.status !== 'closed')
   const counted = live.filter((i) => !isThought(i, opts.config))
@@ -255,9 +277,9 @@ export function buildBoard(issues: Issue[], opts: BoardOptions): Board {
   if (pinned.length) {
     sections.push({
       key: 'pinned',
-      title: 'pinned',
+      title: text.pinned,
       axis: null,
-      note: 'standing beads, kept in view',
+      note: text.pinnedNote,
       count: pinned.length,
       signal: false,
       folded: false,
@@ -340,9 +362,9 @@ export function buildBoard(issues: Issue[], opts: BoardOptions): Board {
   const deferred = live.filter((i) => i.status === 'deferred')
   sections.push({
     key: 'deferred',
-    title: 'deferred',
+    title: text.deferred,
     axis: null,
-    note: 'parked until you pick them up',
+    note: text.deferredNote,
     count: deferred.length,
     signal: false,
     folded: false,
@@ -365,9 +387,9 @@ export function buildBoard(issues: Issue[], opts: BoardOptions): Board {
     .map((issue) => ({ issue, child: false, waiting: false }))
   sections.push({
     key: 'closed',
-    title: 'recently closed',
+    title: text.closed,
     axis: null,
-    note: 'the last twelve struck through',
+    note: text.closedNote,
     count: closed.length,
     signal: false,
     folded: false,

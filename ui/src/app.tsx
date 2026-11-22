@@ -19,6 +19,10 @@ import { useFont } from './use-font'
 import { useTheme } from './use-theme'
 import { useInboxMemory } from './use-inbox-memory'
 import { readyToTry, type Verdict } from './tries'
+import { StringsContext, stringsFor } from './i18n'
+import { useLocale } from './use-locale'
+import { useSkin } from './use-skin'
+import { fixedLook as isFixedLook, type LookProps } from './components/look-menu'
 
 const EMPTY_CONFIG: BoardConfig = {
   agentsview: null,
@@ -67,7 +71,14 @@ interface WriteSpec {
 export function App() {
   const qc = useQueryClient()
   const live = useLive(qc)
-  const toaster = useToast()
+  const sessionQuery = useQuery({
+    queryKey: ['session'],
+    queryFn: api.getSession,
+    staleTime: Infinity,
+  })
+  // a session without a locale (an older server) is english; no session yet keeps the remembered one
+  const s = stringsFor(useLocale(sessionQuery.data ? (sessionQuery.data.config.locale ?? 'en') : null))
+  const toaster = useToast(s.toast)
   const folds = useFolds()
   const { setFolded } = folds
   const [view, setView] = useState<View>('inbox')
@@ -80,16 +91,11 @@ export function App() {
   const captureRef = useRef<HTMLInputElement>(null)
   const searchRef = useRef<HTMLInputElement>(null)
   const narrow = useNarrow()
-  const { theme, toggle: toggleTheme } = useTheme()
-  const { font, toggle: toggleFont } = useFont()
+  const { mode: themeMode, toggle: toggleTheme, setMode: setThemeMode } = useTheme()
+  const { font, toggle: toggleFont, setFont } = useFont()
   // phone only: the open bead covers the list; its own history entry, so back returns to the list
   const [reading, setReading] = useState(() => isReadingState(window.history.state))
 
-  const sessionQuery = useQuery({
-    queryKey: ['session'],
-    queryFn: api.getSession,
-    staleTime: Infinity,
-  })
   const issuesQuery = useQuery({
     queryKey: ['issues'],
     queryFn: api.getIssues,
@@ -138,8 +144,17 @@ export function App() {
   const session = sessionQuery.data
   const repoName = session?.repo.name ?? ''
   const config = session?.config ?? EMPTY_CONFIG
-  const humanName = session?.human.name ?? 'you'
+  const humanName = session?.human.name ?? s.detail.youLower
   const issues = issuesQuery.data?.issues
+
+  // the config's theme is the default look; a pick in the look menu wins
+  const { skin, setSkin, cycle: cycleSkin } = useSkin(session ? (config.theme ?? 'default') : null)
+  // atlas fixes palette and type: no light/dark switch, no body font switch
+  const fixedLook = isFixedLook(skin)
+  const look: LookProps = useMemo(
+    () => ({ skin, onSkin: setSkin, mode: themeMode, onMode: setThemeMode, font, onFont: setFont }),
+    [skin, setSkin, themeMode, setThemeMode, font, setFont],
+  )
 
   const board = useMemo(
     () =>
@@ -147,12 +162,13 @@ export function App() {
         config,
         repoName,
         isFolded: folds.isFolded,
+        strings: s.sections,
       }),
-    [issues, config, repoName, folds.isFolded],
+    [issues, config, repoName, folds.isFolded, s],
   )
 
   const stale = useMemo(() => staleBeads(issues ?? [], now, config), [issues, now, config])
-  const memory = useInboxMemory(localDay(now), issues ? stale : null, toaster.fail)
+  const memory = useInboxMemory(localDay(now), issues ? stale : null, toaster.fail, s.toast)
   const { seen, markSeen, picks } = memory
   const inbox = useMemo(
     () =>
@@ -164,8 +180,9 @@ export function App() {
         read: visitRead,
         holding,
         isFolded: folds.isFolded,
+        strings: s.inbox,
       }),
-    [issues, config, now, seen, picks, visitRead, holding, folds.isFolded],
+    [issues, config, now, seen, picks, visitRead, holding, folds.isFolded, s],
   )
   const staleNav = useMemo(() => {
     const order = stale.map((i) => i.id)
@@ -338,12 +355,12 @@ export function App() {
         if (issue.status === 'closed' && issue.closed_at) markSeen(issue.id, issue.closed_at)
         toaster.show(spec.message, spec.undo ?? undefined)
       } catch (error: unknown) {
-        toaster.fail(error instanceof Error ? error.message : 'write failed')
+        toaster.fail(error instanceof Error ? error.message : s.toast.writeFailed)
       } finally {
         refresh(id)
       }
     },
-    [applyIssue, refresh, toaster, markSeen],
+    [applyIssue, refresh, toaster, markSeen, s],
   )
 
   // the polled list is the record of truth for status, labels and priority; the detail
@@ -361,14 +378,14 @@ export function App() {
       void write(id, {
         optimistic: { ...current, priority: priority as Issue['priority'] },
         call: () => api.setPriority(id, priority),
-        message: `${short} set to p${priority}`,
+        message: s.toast.priority(short, priority),
         undo: async () => {
           await api.setPriority(id, before)
           refresh(id)
         },
       })
     },
-    [current, repoName, write, refresh],
+    [current, repoName, write, refresh, s],
   )
 
   const changeStatus = useCallback(
@@ -377,23 +394,17 @@ export function App() {
       if (before === status) return
       const id = issue.id
       const short = shortId(id, repoName)
-      const verb =
-        status === 'closed' || status === 'deferred' || status === 'pinned'
-          ? status
-          : before === 'pinned'
-            ? 'unpinned'
-            : 'reopened'
       void write(id, {
         optimistic: { ...issue, status },
         call: () => api.setStatus(id, status, extra),
-        message: message ?? `${short} ${verb}`,
+        message: message ?? s.toast.status(short, status, before),
         undo: async () => {
           await api.setStatus(id, before)
           refresh(id)
         },
       })
     },
-    [repoName, write, refresh],
+    [repoName, write, refresh, s],
   )
 
   const onStatus = useCallback(
@@ -424,7 +435,7 @@ export function App() {
         void write(id, {
           optimistic: guess ? { ...issue, due_at: guess } : null,
           call: () => api.setDue(id, due),
-          message: `${shortId(id, repoName)} due ${due}`,
+          message: s.toast.due(shortId(id, repoName), due),
           undo: before
             ? async () => {
                 await api.setDue(id, before)
@@ -440,20 +451,20 @@ export function App() {
         void write(id, {
           optimistic: { ...issue, updated_at: new Date().toISOString() },
           call: () => api.keepIssue(id),
-          message: `${shortId(id, repoName)} kept, off the stale list for 30 days`,
+          message: s.toast.kept(shortId(id, repoName)),
           undo: null,
         })
       },
       onSnooze: (issue: Issue) => {
         stepOff(issue.id)
-        changeStatus(issue, 'deferred', { until: SNOOZE_UNTIL }, `${shortId(issue.id, repoName)} snoozed 4 weeks`)
+        changeStatus(issue, 'deferred', { until: SNOOZE_UNTIL }, s.toast.snoozed(shortId(issue.id, repoName)))
       },
       onClose: (issue: Issue) => {
         stepOff(issue.id)
-        changeStatus(issue, 'closed', { reason: 'stale, closed from beadside' })
+        changeStatus(issue, 'closed', { reason: s.toast.staleReason })
       },
     }),
-    [stepOff, write, repoName, refresh, changeStatus],
+    [stepOff, write, repoName, refresh, changeStatus, s],
   )
 
   const changeView = useCallback(
@@ -493,18 +504,17 @@ export function App() {
       const remove = change.remove ?? []
       if (!add.length && !remove.length) return
       const labels = current.labels.filter((l) => !remove.includes(l)).concat(add)
-      const what = add.length ? `+${add.join(' +')}` : `-${remove.join(' -')}`
       void write(id, {
         optimistic: { ...current, labels },
         call: () => api.editLabels(id, change),
-        message: `${short} ${what}`,
+        message: s.toast.labels(short, add, remove),
         undo: async () => {
           await api.editLabels(id, { add: remove, remove: add })
           refresh(id)
         },
       })
     },
-    [current, repoName, write, refresh],
+    [current, repoName, write, refresh, s],
   )
 
   const onSend = useCallback(() => {
@@ -541,9 +551,9 @@ export function App() {
         qc.setQueryData<IssueDetail>(['issue', id], detail)
         applyIssue(detail.issue)
         const short = shortId(id, repoName)
-        let msg = `note on ${short}`
-        if (addLabel) msg += `, ${addLabel} set`
-        if (clear) msg += `, ${presentClears.join(', ')} cleared`
+        let msg = s.toast.noteOn(short)
+        if (addLabel) msg += s.toast.labelSet(addLabel)
+        if (clear) msg += s.toast.cleared(presentClears)
         toaster.show(msg)
       })
       .catch((error: unknown) => {
@@ -553,13 +563,13 @@ export function App() {
         applyIssue(before)
         // give the text back unless a new draft was started meanwhile
         setDrafts((prev) => (prev[id] ? prev : { ...prev, [id]: text }))
-        toaster.fail(error instanceof Error ? error.message : 'comment failed')
+        toaster.fail(error instanceof Error ? error.message : s.toast.commentFailed)
       })
       .finally(() => {
         setSending(false)
         refresh(id)
       })
-  }, [current, session, drafts, clears, sending, qc, applyIssue, toaster, repoName, refresh, config])
+  }, [current, session, drafts, clears, sending, qc, applyIssue, toaster, repoName, refresh, config, s])
 
   // answering a stored question: the server writes the note and stamps the question; the card
   // keeps its text until bd is done, and gets it back when the write fails
@@ -573,19 +583,19 @@ export function App() {
         const detail = await api.answerAsk(id, text, clear)
         qc.setQueryData<IssueDetail>(['issue', id], detail)
         applyIssue(detail.issue)
-        let msg = `answered ${shortId(id, repoName)}`
-        if (config.note.addLabel) msg += `, ${config.note.addLabel} set`
-        if (clear) msg += `, ${presentClears.join(', ')} cleared`
+        let msg = s.toast.answered(shortId(id, repoName))
+        if (config.note.addLabel) msg += s.toast.labelSet(config.note.addLabel)
+        if (clear) msg += s.toast.cleared(presentClears)
         toaster.show(msg)
         return true
       } catch (error: unknown) {
-        toaster.fail(error instanceof Error ? error.message : 'answer failed')
+        toaster.fail(error instanceof Error ? error.message : s.toast.answerFailed)
         return false
       } finally {
         refresh(id)
       }
     },
-    [current, config, clears, qc, applyIssue, repoName, toaster, refresh],
+    [current, config, clears, qc, applyIssue, repoName, toaster, refresh, s],
   )
 
   // a verdict on a ready-to-try check: the server writes the comment, try.last, the labels and,
@@ -600,31 +610,27 @@ export function App() {
         applyIssue(detail.issue)
         const short = shortId(id, repoName)
         toaster.show(
-          verdict === 'works'
-            ? `${short} works, closed`
-            : verdict === 'broken'
-              ? `${short} still broken, back with the agents`
-              : `${short}: noted what stopped you, still ready to try`,
+          verdict === 'works' ? s.toast.works(short) : verdict === 'broken' ? s.toast.broken(short) : s.toast.cant(short),
         )
         return true
       } catch (error: unknown) {
-        toaster.fail(error instanceof Error ? error.message : 'verdict failed')
+        toaster.fail(error instanceof Error ? error.message : s.toast.verdictFailed)
         return false
       } finally {
         refresh(id)
       }
     },
-    [current, qc, applyIssue, repoName, toaster, refresh],
+    [current, qc, applyIssue, repoName, toaster, refresh, s],
   )
 
   const onCopyText = useCallback(
     (text: string, what: string) => {
       void navigator.clipboard.writeText(text).then(
-        () => toaster.show(`copied ${what}`),
-        () => toaster.fail(`could not copy ${what}`),
+        () => toaster.show(s.toast.copied(what)),
+        () => toaster.fail(s.toast.copyFailed(what)),
       )
     },
-    [toaster],
+    [toaster, s],
   )
 
   const onCaptureSubmit = useCallback(() => {
@@ -638,11 +644,7 @@ export function App() {
           prev ? { ...prev, issues: [...prev.issues, issue] } : prev,
         )
         select(issue.id, false)
-        const labelText =
-          config.capture.labels.length > 0
-            ? ` as ${config.capture.labels.join(' + ')}`
-            : ''
-        toaster.show(`filed ${shortId(issue.id, repoName)}${labelText}`, async () => {
+        toaster.show(s.toast.filed(shortId(issue.id, repoName), config.capture.labels), async () => {
           await api.deleteIssue(issue.id)
           qc.setQueryData<IssueList>(['issues'], (prev) =>
             prev ? { ...prev, issues: prev.issues.filter((i) => i.id !== issue.id) } : prev,
@@ -654,10 +656,10 @@ export function App() {
       })
       .catch((error: unknown) => {
         setCapture(title)
-        toaster.fail(error instanceof Error ? error.message : 'capture failed')
+        toaster.fail(error instanceof Error ? error.message : s.toast.captureFailed)
       })
       .finally(() => refresh(null))
-  }, [capture, qc, select, toaster, repoName, refresh, config])
+  }, [capture, qc, select, toaster, repoName, refresh, config, s])
 
   // board sections by their key, inbox sections by their fold key; both live in one store
   const onToggleSection = useCallback(
@@ -674,11 +676,11 @@ export function App() {
     (id: string) => {
       const short = shortId(id, repoName)
       void navigator.clipboard.writeText(short).then(
-        () => toaster.show(`copied ${short}`),
-        () => toaster.fail(`could not copy ${short}`),
+        () => toaster.show(s.toast.copied(short)),
+        () => toaster.fail(s.toast.copyFailed(short)),
       )
     },
-    [repoName, toaster],
+    [repoName, toaster, s],
   )
 
   const pickHit = useCallback(
@@ -717,7 +719,7 @@ export function App() {
     if (hits.length) searchRef.current?.blur()
   }, [searchResult, selected, pickHit])
 
-  // keyboard: movement, folds, the note box, copy, defer and close, search, quick capture, theme, body font
+  // keyboard: movement, folds, the note box, copy, defer and close, search, quick capture, theme, look, body font
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null
@@ -742,7 +744,7 @@ export function App() {
       } else if (!searching && (e.key === 'i' || e.key === 'b' || e.key === 'o' || (e.key === 'r' && config.tryIt))) {
         e.preventDefault()
         changeView(e.key === 'i' ? 'inbox' : e.key === 'b' ? 'board' : e.key === 'o' ? 'stale' : 'tries')
-      } else if (e.key === 's') {
+      } else if (e.key === 's' || (e.key === 'f' && fixedLook)) {
         e.preventDefault()
         searchRef.current?.focus()
         searchRef.current?.select()
@@ -788,7 +790,10 @@ export function App() {
         captureRef.current?.focus()
       } else if (e.key === 't') {
         e.preventDefault()
-        toggleTheme()
+        if (!fixedLook) toggleTheme()
+      } else if (e.key === 'T') {
+        e.preventDefault()
+        cycleSkin()
       } else if (e.key === 'f') {
         e.preventDefault()
         toggleFont()
@@ -796,24 +801,24 @@ export function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [board, inbox, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme, toggleFont, config])
+  }, [board, inbox, nav, view, changeView, selected, select, setFolded, onCopyId, onStatus, searching, moveHit, clearSearch, toggleTheme, cycleSkin, toggleFont, config, fixedLook])
 
   if (sessionQuery.isError || issuesQuery.isError) {
     const error = sessionQuery.error ?? issuesQuery.error
     return (
       <div className="loading">
-        no answer from the beadside server on /api. {error instanceof Error ? error.message : ''}
+        {s.app.noServer} {error instanceof Error ? error.message : ''}
       </div>
     )
   }
   // the shared seen markers too, or every reply would flash unread first
-  if (!session || !issues || !memory.ready) return <div className="loading">reading the ledger…</div>
+  if (!session || !issues || !memory.ready) return <div className="loading">{s.app.loading}</div>
 
   const draft = selected ? (drafts[selected] ?? '') : ''
   const clear = selected ? (clears[selected] ?? true) : true
 
   return (
-    <>
+    <StringsContext.Provider value={s}>
       <div className={reading ? 'app reading' : 'app'}>
         <IndexPane
           board={board}
@@ -827,10 +832,7 @@ export function App() {
           onCaptureChange={setCapture}
           onCaptureSubmit={onCaptureSubmit}
           fetchedAt={issuesQuery.data?.fetchedAt}
-          theme={theme}
-          onToggleTheme={toggleTheme}
-          font={font}
-          onToggleFont={toggleFont}
+          look={look}
           help={help}
           onHelp={setHelp}
           view={view}
@@ -854,7 +856,7 @@ export function App() {
             error: searchQueryResult.isError
               ? searchQueryResult.error instanceof Error
                 ? searchQueryResult.error.message
-                : 'search failed'
+                : s.toast.searchFailed
               : null,
             onPick: pickHit,
             onMove: moveHit,
@@ -896,6 +898,6 @@ export function App() {
         />
       </div>
       <Toast toast={toaster.toast} onUndo={toaster.runUndo} onDismiss={toaster.dismiss} />
-    </>
+    </StringsContext.Provider>
   )
 }

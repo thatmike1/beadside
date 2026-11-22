@@ -28,6 +28,8 @@ export interface FontControl {
   font: BodyFont
   /** flips the body font and remembers it */
   toggle: () => void
+  /** sets the body font and remembers it */
+  setFont: (font: BodyFont) => void
 }
 
 /** the board's body font, kept on <html data-font> so the stylesheet can key off it */
@@ -57,5 +59,14 @@ export function useFont(): FontControl {
     })
   }, [])
 
-  return { font, toggle }
+  const pick = useCallback((next: BodyFont) => {
+    try {
+      window.localStorage.setItem(STORAGE_KEY, next)
+    } catch {
+      // storage full or blocked: the font still holds for this page
+    }
+    setFont(next)
+  }, [])
+
+  return { font, toggle, setFont: pick }
 }

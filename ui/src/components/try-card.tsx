@@ -3,8 +3,8 @@
 
 import { useRef, useState } from 'react'
 import type { KitItem, TryKit, Verdict } from '../tries'
-import { lastText, qrPath, tryMeta } from '../tries'
-import { formatShortDate, formatShortDateTime, relativeTime } from '../format'
+import { qrPath } from '../tries'
+import { lastLine, tryFacts, useStrings, type Strings } from '../i18n'
 
 interface TryCardProps {
   kit: TryKit
@@ -16,9 +16,11 @@ interface TryCardProps {
   onVerdict: (verdict: Verdict, note: string) => Promise<boolean>
 }
 
-const ASKS_NOTE: Record<Exclude<Verdict, 'works'>, { label: string; placeholder: string }> = {
-  broken: { label: 'Still broken', placeholder: 'what you saw, one line is enough…' },
-  cant: { label: "Couldn't check", placeholder: 'what stopped you: a dead link, no release, no device…' },
+function asksNote(s: Strings): Record<Exclude<Verdict, 'works'>, { label: string; placeholder: string }> {
+  return {
+    broken: { label: s.tryIt.broken, placeholder: s.tryIt.brokenPlaceholder },
+    cant: { label: s.tryIt.cant, placeholder: s.tryIt.cantPlaceholder },
+  }
 }
 
 const web = (href: string) => /^https?:\/\//i.test(href)
@@ -29,6 +31,7 @@ function imageSrc(id: string, index: number, src: string): string {
 }
 
 function Qr({ text, label }: { text: string; label: string }) {
+  const s = useStrings()
   let path: { size: number; d: string } | null = null
   try {
     path = qrPath(text)
@@ -38,7 +41,7 @@ function Qr({ text, label }: { text: string; label: string }) {
   if (!path) return null
   return (
     <figure className="tryqr">
-      <svg viewBox={`0 0 ${path.size} ${path.size}`} role="img" aria-label={`qr code: ${label}`} shapeRendering="crispEdges">
+      <svg viewBox={`0 0 ${path.size} ${path.size}`} role="img" aria-label={s.tryIt.qr(label)} shapeRendering="crispEdges">
         <rect width={path.size} height={path.size} fill="#fff" />
         <path d={path.d} fill="#000" />
       </svg>
@@ -48,6 +51,7 @@ function Qr({ text, label }: { text: string; label: string }) {
 }
 
 function Tool({ item, onCopy }: { item: Exclude<KitItem, { type: 'qr' } | { type: 'image' }>; onCopy: TryCardProps['onCopy'] }) {
+  const s = useStrings()
   if (item.type === 'spec') {
     return (
       <span className="tryspec">
@@ -59,7 +63,7 @@ function Tool({ item, onCopy }: { item: Exclude<KitItem, { type: 'qr' } | { type
     return (
       <a className="askopt trytool" href={item.href} target="_blank" rel="noreferrer" title={item.href}>
         <b>{item.label}</b>
-        <span className="asklean">open</span>
+        <span className="asklean">{s.tryIt.open}</span>
       </a>
     )
   }
@@ -67,7 +71,7 @@ function Tool({ item, onCopy }: { item: Exclude<KitItem, { type: 'qr' } | { type
     return (
       <button className="askopt trytool" onClick={() => onCopy(item.text, item.label)} title={item.text}>
         <b>{item.label}</b>
-        <span className="asklean">copy</span>
+        <span className="asklean">{s.tryIt.copy}</span>
       </button>
     )
   }
@@ -77,12 +81,12 @@ function Tool({ item, onCopy }: { item: Exclude<KitItem, { type: 'qr' } | { type
       {item.href && web(item.href) ? (
         <a className="askopt trytool" href={item.href} target="_blank" rel="noreferrer" title={item.href}>
           <b>{item.label}</b>
-          <span className="asklean">open</span>
+          <span className="asklean">{s.tryIt.open}</span>
         </a>
       ) : null}
       <button className="askopt trytool" onClick={() => onCopy(item.path, item.label)} title={item.path}>
-        <b>{item.href && web(item.href) ? 'path' : item.label}</b>
-        <span className="asklean">copy</span>
+        <b>{item.href && web(item.href) ? s.tryIt.path : item.label}</b>
+        <span className="asklean">{s.tryIt.copy}</span>
         <span className="asksub mono">{item.path}</span>
       </button>
     </>
@@ -90,11 +94,13 @@ function Tool({ item, onCopy }: { item: Exclude<KitItem, { type: 'qr' } | { type
 }
 
 export function TryCard({ kit, id, short, onCopy, onVerdict }: TryCardProps) {
+  const s = useStrings()
+  const ASKS_NOTE = asksNote(s)
   const [asking, setAsking] = useState<Exclude<Verdict, 'works'> | null>(null)
   const [note, setNote] = useState('')
   const [sending, setSending] = useState<Verdict | null>(null)
   const boxRef = useRef<HTMLTextAreaElement>(null)
-  const meta = tryMeta(kit)
+  const meta = tryFacts(s, kit)
   const visuals = kit.kit.map((item, index) => ({ item, index })).filter(({ item }) => item.type === 'qr' || item.type === 'image')
   const tools = kit.kit.filter((item): item is Exclude<KitItem, { type: 'qr' } | { type: 'image' }> => item.type !== 'qr' && item.type !== 'image')
   // the server numbers images among image items only
@@ -123,33 +129,33 @@ export function TryCard({ kit, id, short, onCopy, onVerdict }: TryCardProps) {
   }
 
   return (
-    <section className="ask try" aria-label="ready to try">
+    <section className="ask try" aria-label={s.tryIt.label}>
       <div className="askhead">
-        <span className="asklabel">ready to try</span>
+        <span className="asklabel">{s.tryIt.label}</span>
         {kit.app ? <span>{kit.app}</span> : null}
         {meta.map((m) => (
           <span key={m}>{m}</span>
         ))}
-        {kit.shipped ? <span>shipped {formatShortDate(kit.shipped.split(' ')[0]) || kit.shipped}</span> : null}
+        {kit.shipped ? <span>{s.tryIt.shipped(s.shortDate(kit.shipped.split(' ')[0]) || kit.shipped)}</span> : null}
       </div>
       <p className="askq">{kit.title}</p>
       {kit.why ? <p className="askwhy">{kit.why}</p> : null}
       {kit.last ? (
-        <p className="trylast" title={relativeTime(kit.last.at)}>
-          last time, {formatShortDateTime(kit.last.at)}: {lastText(kit.last)}
+        <p className="trylast" title={s.relative(kit.last.at)}>
+          {s.tryIt.lastTime(s.shortDateTime(kit.last.at), lastLine(s, kit.last))}
         </p>
       ) : null}
 
       <dl className="tryfacts">
         {kit.expect ? (
           <>
-            <dt>expect</dt>
+            <dt>{s.tryIt.expect}</dt>
             <dd>{kit.expect}</dd>
           </>
         ) : null}
         {kit.verified ? (
           <>
-            <dt>checked</dt>
+            <dt>{s.tryIt.checked}</dt>
             <dd>{kit.verified}</dd>
           </>
         ) : null}
@@ -195,7 +201,7 @@ export function TryCard({ kit, id, short, onCopy, onVerdict }: TryCardProps) {
         <textarea
           ref={boxRef}
           value={note}
-          aria-label={`${ASKS_NOTE[asking].label} note for ${short}`}
+          aria-label={s.tryIt.noteFor(ASKS_NOTE[asking].label, short)}
           placeholder={ASKS_NOTE[asking].placeholder}
           rows={2}
           onChange={(e) => setNote(e.target.value)}
@@ -212,19 +218,17 @@ export function TryCard({ kit, id, short, onCopy, onVerdict }: TryCardProps) {
       ) : null}
       <div className="askrow">
         <span className="chint">
-          {asking
-            ? `goes on ${short} as your note${asking === 'cant' ? '; it stays ready to try' : '; agents pick it up from there'}.`
-            : `Works closes ${short}; the other two ask for a short note first.`}
+          {asking ? s.tryIt.goesOn(short, asking) : s.tryIt.worksCloses(short)}
         </span>
         <span className="trybtns">
           <button className={asking ? 'btn' : 'btn primary'} onClick={() => send('works')} disabled={sending !== null}>
-            {sending === 'works' ? 'closing…' : 'Works'}
+            {sending === 'works' ? s.tryIt.closing : s.tryIt.works}
           </button>
           {(['broken', 'cant'] as const).map((v) =>
             asking === v ? (
               // the open one sends: same word, now with the note under it
               <button key={v} className="btn primary" onClick={() => send(v)} disabled={sending !== null || !note.trim()}>
-                {sending === v ? 'sending…' : ASKS_NOTE[v].label}
+                {sending === v ? s.tryIt.sending : ASKS_NOTE[v].label}
               </button>
             ) : (
               <button key={v} className="btn" onClick={() => open(v)} disabled={sending !== null}>

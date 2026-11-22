@@ -7,12 +7,14 @@ import type { Board, BoardRow } from '../model'
 import { axisOf } from '../model'
 import type { Inbox } from '../inbox'
 import { axisStyle, formatTime, laneColor } from '../format'
-import type { BodyFont } from '../use-font'
-import type { Theme } from '../use-theme'
+import { LookMenu, fixedLook as isFixedLook, type LookProps } from './look-menu'
 import { SearchResults } from './search-results'
 import { InboxList, StaleList, TryList, type RowActions } from './inbox-list'
 import type { TryGroup } from '../tries'
 import { Row } from './row'
+import { KeyHelp, KeyHint, type KeyOptions } from './keys-help'
+import { Icon } from './icon'
+import { useStrings } from '../i18n'
 
 /** the inbox lands first; the board is the lanes, stale the board filtered to old open work */
 export type View = 'inbox' | 'board' | 'stale' | 'tries'
@@ -30,10 +32,8 @@ interface IndexPaneProps {
   onCaptureSubmit: () => void
   fetchedAt: string | undefined
   search: SearchProps
-  theme: Theme
-  onToggleTheme: () => void
-  font: BodyFont
-  onToggleFont: () => void
+  /** theme, light or dark, and body font for the look menu */
+  look: LookProps
   /** the key list behind the `?` button */
   help: boolean
   onHelp: (open: boolean) => void
@@ -66,14 +66,11 @@ export interface SearchProps {
   onClear: () => void
 }
 
-const SCOPES: { scope: SearchScope; label: string }[] = [
-  { scope: 'all', label: 'all' },
-  { scope: 'open', label: 'open' },
-  { scope: 'closed', label: 'closed' },
-]
+const SCOPES: SearchScope[] = ['all', 'open', 'closed']
 
 /** left pane: the whole ledger as one dense scrollable index */
 export function IndexPane(props: IndexPaneProps) {
+  const s = useStrings()
   const {
     board,
     repoName,
@@ -87,10 +84,7 @@ export function IndexPane(props: IndexPaneProps) {
     onCaptureSubmit,
     fetchedAt,
     search,
-    theme,
-    onToggleTheme,
-    font,
-    onToggleFont,
+    look,
     help,
     onHelp,
     view,
@@ -128,45 +122,37 @@ export function IndexPane(props: IndexPaneProps) {
   }, [selected])
 
   const { counts } = board
-  const capturePlaceholder =
-    config.capture.labels.length > 0
-      ? `capture a thought, enter files it as ${config.capture.labels.join(' + ')}`
-      : 'capture a thought, enter files it'
+  const capturePlaceholder = s.capture(config.capture.labels)
+  // atlas fixes palette and type, so `f` focuses search like `s`
+  const fixedLook = isFixedLook(look.skin)
+  const keyOptions: KeyOptions = { tries: !!config.tryIt, fixedLook }
 
   return (
     <aside className="index">
       <div className="ihead">
         <div className="brand">
-          <b>beadside</b>
+          <b>
+            {s.brand}
+            <i className="brand-dot" aria-hidden="true">
+              .
+            </i>
+          </b>
           <span>{repoName}</span>
-          {fetchedAt ? <span className="stale">read {formatTime(fetchedAt)}</span> : null}
-          <button
-            className="theme"
-            onClick={onToggleTheme}
-            aria-label={`switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
-            title="t"
-          >
-            {theme === 'dark' ? 'light' : 'dark'}
-          </button>
-          <button
-            className="theme fontpick"
-            onClick={onToggleFont}
-            aria-label={`switch body font to ${font === 'ubuntu' ? 'figtree' : 'ubuntu'}`}
-            title="f"
-          >
-            {font === 'ubuntu' ? 'figtree' : 'ubuntu'}
-          </button>
-          <KeyHelp open={help} onOpen={onHelp} />
+          {fetchedAt ? <span className="stale">{s.head.read(formatTime(fetchedAt))}</span> : null}
+          <LookMenu {...look} />
+          <KeyHelp open={help} onOpen={onHelp} options={keyOptions} />
         </div>
         <div className="counts">
-          <em>{counts.open}</em> open<span className="sep">/</span>
-          <em>{counts.inProgress}</em> in progress<span className="sep">/</span>
-          <em>{counts.deferred}</em> deferred
+          <em>{counts.open}</em> {s.counts.open}
+          <span className="sep">/</span>
+          <em>{counts.inProgress}</em> {s.counts.inProgress}
+          <span className="sep">/</span>
+          <em>{counts.deferred}</em> {s.counts.deferred}
           {config.waiting.labels.length > 0 ? (
             <>
               <span className="sep">/</span>
               <span className={counts.waiting ? 'hot' : ''}>
-                <em>{counts.waiting}</em> waiting on you
+                <em>{counts.waiting}</em> {s.counts.waiting}
               </span>
             </>
           ) : null}
@@ -174,7 +160,7 @@ export function IndexPane(props: IndexPaneProps) {
             <>
               <span className="sep">/</span>
               <span className={counts.unread ? 'hot' : ''}>
-                <em>{counts.unread}</em> carrying your note
+                <em>{counts.unread}</em> {s.counts.unread}
               </span>
             </>
           ) : null}
@@ -182,12 +168,12 @@ export function IndexPane(props: IndexPaneProps) {
       </div>
 
       <div className="bar">
-        <div className="views" role="tablist" aria-label="view">
+        <div className="views" role="tablist" aria-label={s.views.label}>
           {(
             [
-              ['inbox', 'inbox', inbox.count, 'i'],
-              ['board', 'board', null, 'b'],
-              ['stale', 'stale', stale.length, 'o'],
+              ['inbox', s.views.inbox, inbox.count, 'i'],
+              ['board', s.views.board, null, 'b'],
+              ['stale', s.views.stale, stale.length, 'o'],
               ...(config.tryIt
                 ? ([['tries', config.tryIt.title, tries.reduce((n, g) => n + g.issues.length, 0), 'r']] as const)
                 : []),
@@ -208,13 +194,14 @@ export function IndexPane(props: IndexPaneProps) {
         </div>
 
         <div className="search">
+          <Icon name="search" />
           <input
             ref={search.ref}
             value={search.value}
             type="search"
-            aria-label="search beads"
-            placeholder="search"
-            title="titles, descriptions, notes and comments, closed beads too (s)"
+            aria-label={s.search.label}
+            placeholder={s.search.placeholder}
+            title={s.search.title(fixedLook ? 's, f' : 's')}
             onChange={(e) => {
               if (!searching && e.target.value.trim() && listRef.current) boardScroll.current = listRef.current.scrollTop
               search.onChange(e.target.value)
@@ -234,13 +221,13 @@ export function IndexPane(props: IndexPaneProps) {
             }}
           />
           {search.value ? (
-            <button className="sclear" onClick={search.onClear} aria-label="clear search">
+            <button className="sclear" onClick={search.onClear} aria-label={s.search.clear}>
               &times;
             </button>
           ) : null}
           {searching ? (
-            <span className="scopes" role="radiogroup" aria-label="search scope">
-              {SCOPES.map(({ scope, label }) => (
+            <span className="scopes" role="radiogroup" aria-label={s.search.scopeLabel}>
+              {SCOPES.map((scope) => (
                 <button
                   key={scope}
                   role="radio"
@@ -248,7 +235,7 @@ export function IndexPane(props: IndexPaneProps) {
                   className={search.scope === scope ? 'on' : ''}
                   onClick={() => search.onScope(scope)}
                 >
-                  {label}
+                  {s.search.scopes[scope]}
                 </button>
               ))}
             </span>
@@ -257,6 +244,7 @@ export function IndexPane(props: IndexPaneProps) {
       </div>
 
       <div className="capture" hidden={searching}>
+        <Icon name="plus" />
         <input
           ref={captureRef}
           value={captureValue}
@@ -302,6 +290,7 @@ export function IndexPane(props: IndexPaneProps) {
                 aria-expanded={!section.folded}
                 onClick={() => onToggleSection(section.key)}
               >
+                <Icon name="chevron" className="fold" />
                 <span style={color ? { color } : undefined}>{section.title}</span>
                 <span className="n">{section.count}</span>
                 {section.note ? <span className="note">{section.note}</span> : null}
@@ -351,7 +340,7 @@ export function IndexPane(props: IndexPaneProps) {
                   })}
                   {section.groups.length === 0 ? (
                     <div className="grouphead">
-                      <span className="gt">nothing {section.signal ? 'waiting' : 'here'}</span>
+                      <span className="gt">{s.emptySection(section.signal)}</span>
                     </div>
                   ) : null}
                 </div>
@@ -361,65 +350,7 @@ export function IndexPane(props: IndexPaneProps) {
         })}
       </div>
 
+      <KeyHint open={help} onOpen={onHelp} options={keyOptions} />
     </aside>
-  )
-}
-
-/** every key the board answers to, in the order the popover lists them */
-const KEYS: { keys: string[]; what: string }[] = [
-  { keys: ['\u2191', '\u2193', 'j', 'k'], what: 'move' },
-  { keys: ['enter'], what: 'write a note' },
-  { keys: ['esc'], what: 'leave a field, clear the search' },
-  { keys: ['i', 'b', 'o'], what: 'inbox, board, stale' },
-  { keys: ['r'], what: 'ready to try, when on' },
-  { keys: ['s'], what: 'search' },
-  { keys: ['/'], what: 'capture a thought' },
-  { keys: ['c'], what: 'copy the id' },
-  { keys: ['n'], what: 'defer' },
-  { keys: ['m'], what: 'close' },
-  { keys: ['h', 'l'], what: 'fold, unfold' },
-  { keys: ['t'], what: 'theme' },
-  { keys: ['f'], what: 'body font' },
-  { keys: ['?'], what: 'this list' },
-]
-
-/** the `?` button and the key list it opens; `?` toggles it from anywhere outside a field */
-function KeyHelp({ open, onOpen }: { open: boolean; onOpen: (open: boolean) => void }) {
-  const ref = useRef<HTMLSpanElement>(null)
-  // a click anywhere else closes it
-  useEffect(() => {
-    if (!open) return
-    const onDown = (e: PointerEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onOpen(false)
-    }
-    document.addEventListener('pointerdown', onDown)
-    return () => document.removeEventListener('pointerdown', onDown)
-  }, [open, onOpen])
-  return (
-    <span className="keyhelp" ref={ref}>
-      <button
-        className={open ? 'qmark on' : 'qmark'}
-        aria-label="keyboard keys"
-        aria-expanded={open}
-        title="?"
-        onClick={() => onOpen(!open)}
-      >
-        ?
-      </button>
-      {open ? (
-        <div className="keys" role="dialog" aria-label="keyboard keys">
-          {KEYS.map(({ keys, what }) => (
-            <div className="krow" key={what}>
-              <span className="kk">
-                {keys.map((k) => (
-                  <kbd key={k}>{k}</kbd>
-                ))}
-              </span>
-              <span>{what}</span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </span>
   )
 }

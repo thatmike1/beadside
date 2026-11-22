@@ -10,7 +10,9 @@ import { searchIssues } from '../server/search.ts'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const issues = JSON.parse(readFileSync(join(here, 'demo/beads.json'), 'utf8'))
-const config = resolveConfig(JSON.parse(readFileSync(join(here, 'demo/beadside.json'), 'utf8')))
+// BD_BOARD_DEMO_CONFIG swaps the demo config, e.g. to look at another locale
+const configPath = process.env.BD_BOARD_DEMO_CONFIG ?? join(here, 'demo/beadside.json')
+const config = resolveConfig(JSON.parse(readFileSync(configPath, 'utf8')))
 
 const comments = {
   'demo-wait-1': [

@@ -49,6 +49,33 @@ export interface Inbox {
 // the stale beads picked for one day, kept so the pick holds when one of them leaves
 export type { StalePicks }
 
+/** the inbox's own section copy; the asks title and note, and the label names, come from the config */
+export interface InboxStrings {
+  askNote: string
+  replies: string
+  repliesNote: string
+  closed: string
+  closedNote: string
+  labelNote: string
+  due: string
+  dueNote: (days: number) => string
+  stale: string
+  staleNote: (days: number) => string
+}
+
+export const EN_INBOX: InboxStrings = {
+  askNote: 'a question stored on the bead, answer it there',
+  replies: 'replies',
+  repliesNote: 'an agent answered your note',
+  closed: 'answered, closed',
+  closedNote: 'your note got its answer and the bead closed',
+  labelNote: 'a call only you can make',
+  due: 'due',
+  dueNote: (days) => `overdue or due within ${days} days`,
+  stale: 'stale',
+  staleNote: (days) => `untouched ${days}+ days, keep, snooze or close`,
+}
+
 export interface InboxOptions {
   config: BoardConfig
   now: Date
@@ -65,6 +92,8 @@ export interface InboxOptions {
   holding: string | null
   /** stored fold state per section key; every section is open without it */
   isFolded?: (sectionKey: string, fallback: boolean) => boolean
+  /** the section copy; english when left out */
+  strings?: InboxStrings
 }
 
 /** the local calendar day, 2026-10-13 */
@@ -189,6 +218,7 @@ export function dailyPicks(
  */
 export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
   const { config, now, seen, holding } = opts
+  const text = opts.strings ?? EN_INBOX
   const live = issues.filter((i) => i.status !== 'closed')
   const touchedFirst = (a: Issue, b: Issue) => b.updated_at.localeCompare(a.updated_at)
   const byId = new Map(issues.map((i) => [i.id, i]))
@@ -263,15 +293,15 @@ export function buildInbox(issues: Issue[], opts: InboxOptions): Inbox {
     push(
       'ask',
       config.asks.title,
-      config.asks.note ?? 'a question stored on the bead, answer it there',
+      config.asks.note ?? text.askNote,
       [...openAsks, ...answeredAsks].map((x) => x.issue),
     )
   }
-  push('reply', 'replies', 'an agent answered your note', replies)
-  push('closed', 'answered, closed', 'your note got its answer and the bead closed', closedAnswers)
-  push('label', labels.join(' / '), 'a call only you can make', asked)
-  push('due', 'due', `overdue or due within ${DUE_WITHIN_DAYS} days`, due)
-  push('stale', 'stale', `untouched ${STALE_DAYS}+ days, keep, snooze or close`, picked)
+  push('reply', text.replies, text.repliesNote, replies)
+  push('closed', text.closed, text.closedNote, closedAnswers)
+  push('label', labels.join(' / '), text.labelNote, asked)
+  push('due', text.due, text.dueNote(DUE_WITHIN_DAYS), due)
+  push('stale', text.stale, text.staleNote(STALE_DAYS), picked)
 
   const order: string[] = []
   const layout: string[] = []

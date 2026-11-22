@@ -33,8 +33,28 @@ export interface InboxMemory {
 
 const newer = (a: string | undefined, b: string) => !a || Date.parse(a) < Date.parse(b)
 
+/** the failure lines; english unless the board passes its locale's */
+export interface InboxMemoryCopy {
+  seenFailed: (id: string, error: string) => string
+  picksFailed: (error: string) => string
+  writeFailed: string
+}
+
+const EN_COPY: InboxMemoryCopy = {
+  seenFailed: (id, error) => `could not store ${id} as read: ${error}`,
+  picksFailed: (error) => `could not store the stale picks: ${error}`,
+  writeFailed: 'write failed',
+}
+
 /** the shared inbox state for one day; `stale` is null until the issue list has loaded */
-export function useInboxMemory(day: string, stale: Issue[] | null, onError: (message: string) => void): InboxMemory {
+export function useInboxMemory(
+  day: string,
+  stale: Issue[] | null,
+  onError: (message: string) => void,
+  copy: InboxMemoryCopy = EN_COPY,
+): InboxMemory {
+  const copyRef = useRef(copy)
+  copyRef.current = copy
   const qc = useQueryClient()
   const query = useQuery({
     queryKey: ['inbox-state', day],
@@ -58,7 +78,8 @@ export function useInboxMemory(day: string, stale: Issue[] | null, onError: (mes
     (id: string, at: string) => {
       setLocal((prev) => (newer(prev[id], at) ? { ...prev, [id]: at } : prev))
       api.markSeen(id, at).catch((error: unknown) => {
-        errorRef.current(`could not store ${id} as read: ${error instanceof Error ? error.message : 'write failed'}`)
+        const c = copyRef.current
+        errorRef.current(c.seenFailed(id, error instanceof Error ? error.message : c.writeFailed))
       })
     },
     [],
@@ -78,7 +99,8 @@ export function useInboxMemory(day: string, stale: Issue[] | null, onError: (mes
       .setStalePicks(picks)
       .then((next) => qc.setQueryData(['inbox-state', day], next))
       .catch((error: unknown) => {
-        errorRef.current(`could not store the stale picks: ${error instanceof Error ? error.message : 'write failed'}`)
+        const c = copyRef.current
+        errorRef.current(c.picksFailed(error instanceof Error ? error.message : c.writeFailed))
       })
   }, [needDraw, stale, day, qc])
 

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { BoardConfig, Comment, Issue, NoteRead } from '../api'
 import { DetailPane } from './detail-pane'
+import { EN, StringsContext, stringsFor, type Strings } from '../i18n'
 
 const CONFIG: BoardConfig = {
   human: { id: 'human:tester', name: 'Tester' },
@@ -55,9 +56,11 @@ function render(
   issue: Issue = ISSUE,
   comments: Comment[] = COMMENTS,
   noteRead: NoteRead | null = null,
+  strings: Strings = EN,
 ): string {
   const noop = () => {}
   return renderToStaticMarkup(
+    <StringsContext.Provider value={strings}>
     <DetailPane
       issue={issue}
       detail={{ issue, comments, sessions: null, notes: [], note_read: noteRead }}
@@ -85,7 +88,8 @@ function render(
       onAnswer={async () => true}
       onVerdict={async () => true}
       onCopyText={() => {}}
-    />,
+    />
+    </StringsContext.Provider>,
   )
 }
 
@@ -167,3 +171,25 @@ describe('detail pane replies, read marker and folds', () => {
     expect(render()).toMatch(/<span title="[^"]+ ago">\d+ Oct 2026 \d\d:\d\d<\/span>/)
   })
 })
+
+describe('detail pane in czech', () => {
+  const cs = stringsFor('cs')
+
+  it('writes its own copy, dates and plurals in czech and leaves the bead text alone', () => {
+    const html = render(ISSUE, COMMENTS, null, cs)
+    expect(html).toContain('3 komentáře')
+    expect(html).toContain('založeno 1. 10. 2026')
+    expect(html).toContain('tvoje poznámka je zatím nepřečtená')
+    expect(html).toContain('>popis<')
+    expect(html).toContain('>nepřečteno<')
+    expect(html).toContain('nejstarší první')
+    expect(html).toContain('the description')
+    expect(html).not.toContain('no comments yet')
+    expect(html).not.toContain('>description<')
+  })
+
+  it('keeps english as the default without a provider', () => {
+    expect(render()).toContain('3 comments')
+  })
+})
+

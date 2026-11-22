@@ -15,20 +15,14 @@ import {
   unreadNote,
   type LinkGroup,
 } from '../model'
-import {
-  axisStyle,
-  formatDate,
-  formatDateTime,
-  formatShortDate,
-  formatShortDateTime,
-  relativeTime,
-  statusLabel,
-} from '../format'
+import { axisStyle } from '../format'
+import { linkTitle, useStrings } from '../i18n'
 import { useVisitFolds, type Folds } from '../use-folds'
 import { useCommentOrder } from '../use-comment-order'
 import { MarkdownText } from './markdown'
 import { WriteRow } from './write-row'
 import { NoteBox } from './note-box'
+import { StatusRoute } from './status-route'
 import { AskCard } from './ask-card'
 import { askOf } from '../asks'
 import { TryCard } from './try-card'
@@ -87,50 +81,54 @@ const commentFold = (id: string) => `comment:${id}`
 
 /** a date with its relative age on hover, so two days back does not read as old news */
 function When({ iso, prefix = '', long = false }: { iso: string | null | undefined; prefix?: string; long?: boolean }) {
+  const s = useStrings()
   return (
-    <span title={relativeTime(iso)}>
+    <span title={s.relative(iso)}>
       {prefix}
-      {long ? formatDateTime(iso) : formatDate(iso)}
+      {long ? s.dateTime(iso) : s.date(iso)}
     </span>
   )
 }
 
 /** "read by Claude, 20 Oct 11:04" on the human's latest note, with where that came from on hover */
 function ReadTag({ read, flag }: { read: NoteRead; flag: string | null }) {
-  const who = read.by.self ? 'you' : read.by.name
-  const ago = relativeTime(read.at)
+  const s = useStrings()
+  const who = read.by.self ? s.detail.youLower : read.by.name
+  const ago = s.relative(read.at)
   const title =
     read.source === 'label'
-      ? `${read.actor || 'someone'} took the ${flag ?? 'note'} flag off ${ago}, from bd's audit events`
-      : `the first agent comment after this note, ${ago}; this clone has no record of the flag coming off`
+      ? s.detail.readLabelTitle(read.actor, flag ?? s.detail.noteWord, ago)
+      : s.detail.readGuessTitle(ago)
+  const when = s.shortDateTime(read.at)
   return (
     <span className={read.source === 'label' ? 'readtag' : 'readtag guess'} title={title}>
-      {read.source === 'label' ? 'read' : 'answered'} by {who}, {formatShortDateTime(read.at)}
+      {read.source === 'label' ? s.detail.readBy(who, when) : s.detail.answeredBy(who, when)}
     </span>
   )
 }
 
 /** the comment header label: You for the board's human, the agent or human name, or a legacy marker */
 function CommentHead({ comment, human }: { comment: Comment; human: string }) {
+  const s = useStrings()
   const { by } = comment
   if (by.kind === 'unknown') {
     return (
       <>
-        <b className="who unknown" title={`stored author "${comment.author}" does not say whether a person or an agent wrote it`}>
+        <b className="who unknown" title={s.detail.unknownTitle(comment.author)}>
           {comment.author}
         </b>
-        <span className="whotag">author unknown</span>
+        <span className="whotag">{s.detail.authorUnknown}</span>
       </>
     )
   }
-  const label = by.self ? 'You' : by.name
+  const label = by.self ? s.detail.you : by.name
   const title = by.self ? `${human} (${comment.author})` : comment.author
   return (
     <>
       <b className={`who ${by.kind}`} title={title}>
         {label}
       </b>
-      {by.kind === 'agent' ? <span className="whotag">agent</span> : null}
+      {by.kind === 'agent' ? <span className="whotag">{s.detail.agent}</span> : null}
     </>
   )
 }
@@ -150,6 +148,7 @@ function CommentRow(props: {
   open: boolean
   onFold: (open: boolean) => void
 }) {
+  const s = useStrings()
   const { comment, human, flash, unread, reply, read, head, open } = props
   const cls = [
     'comment',
@@ -166,13 +165,13 @@ function CommentRow(props: {
         <CommentHead comment={comment} human={human} />
         <When iso={comment.created_at} long />
         {unread ? (
-          <span className="unreadtag" title="no agent has read this note yet">
-            unread
+          <span className="unreadtag" title={s.detail.unreadTitle}>
+            {s.detail.unread}
           </span>
         ) : null}
         {reply ? (
-          <span className="replytag" title="written after your latest note">
-            reply
+          <span className="replytag" title={s.detail.replyTitle}>
+            {s.detail.reply}
           </span>
         ) : null}
         {read ? <ReadTag read={read} flag={props.flag} /> : null}
@@ -180,7 +179,7 @@ function CommentRow(props: {
       <MarkdownText text={folded ? head : comment.text} className="ctext" />
       {head !== null ? (
         <button className="cmore" aria-expanded={open} onClick={() => props.onFold(!open)}>
-          {open ? 'less' : 'more'}
+          {open ? s.detail.less : s.detail.more}
         </button>
       ) : null}
     </div>
@@ -189,6 +188,7 @@ function CommentRow(props: {
 
 /** detail of the selected bead; the list record paints the header before the join lands */
 export function DetailPane(props: DetailPaneProps) {
+  const s = useStrings()
   const { issue, detail, repoName, config, human, knownLabels, reveal, folds } = props
   const { order, toggle: toggleOrder } = useCommentOrder()
   // comments open for this visit; every long one starts folded to its headline
@@ -239,7 +239,9 @@ export function DetailPane(props: DetailPaneProps) {
   if (!issue) {
     return (
       <main className="read">
-        <div className="loading">no bead open.</div>
+        <div className="sheet">
+          <div className="loading">{s.detail.none}</div>
+        </div>
       </main>
     )
   }
@@ -263,27 +265,27 @@ export function DetailPane(props: DetailPaneProps) {
 
   return (
     <main className="read" ref={readRef} style={axisStyle(axis, config) as CSSProperties}>
+      {/* the atlas theme lays the bead on a card over the map; elsewhere the sheet adds no box */}
+      <div className="sheet">
       <div className="rhead">
         <div className="rline">
-          <button className="back" onClick={props.onBack} aria-label="back to the list">
-            &#8249; list
+          <button className="back" onClick={props.onBack} aria-label={s.detail.back}>
+            &#8249; {s.detail.list}
           </button>
           <span className="dot" />
           <button
             className="mono copyid"
             style={{ color: 'var(--ink-2)' }}
-            title="copy id"
+            title={s.detail.copyId}
             onClick={() => props.onCopyId(full.id)}
           >
             {short}
           </button>
           {config.lanes.length ? <span className="axis">{axis ?? config.unlaned.title}</span> : null}
-          <span>{statusLabel(full.status)}</span>
+          <span className={`stat st-${full.status}`}>{s.status[full.status]}</span>
           <span className="right">
-            <span>
-              {full.comment_count} {full.comment_count === 1 ? 'comment' : 'comments'}
-            </span>
-            <When iso={full.updated_at} prefix="touched " />
+            <span>{s.detail.comments(full.comment_count)}</span>
+            <When iso={full.updated_at} prefix={s.detail.touched} />
           </span>
         </div>
         <WriteRow
@@ -303,19 +305,19 @@ export function DetailPane(props: DetailPaneProps) {
             <span className="s">/</span>
             <span>{full.issue_type}</span>
             <span className="s">/</span>
-            <When iso={full.created_at} prefix="opened " />
+            <When iso={full.created_at} prefix={s.detail.opened} />
             <span className="s">/</span>
-            <When iso={full.updated_at} prefix="updated " />
+            <When iso={full.updated_at} prefix={s.detail.updated} />
             {full.closed_at ? (
               <>
                 <span className="s">/</span>
-                <When iso={full.closed_at} prefix="closed " />
+                <When iso={full.closed_at} prefix={s.detail.closed} />
               </>
             ) : null}
             {full.due_at && full.status !== 'closed' ? (
               <>
                 <span className="s">/</span>
-                <When iso={full.due_at} prefix="due " />
+                <When iso={full.due_at} prefix={s.detail.due} />
               </>
             ) : null}
             {project ? (
@@ -337,6 +339,8 @@ export function DetailPane(props: DetailPaneProps) {
               </span>
             ) : null}
           </div>
+
+          <StatusRoute issue={full} />
 
           {ask ? <AskCard key={full.id} ask={ask} short={short} config={config} onAnswer={props.onAnswer} /> : null}
           {check ? (
@@ -360,7 +364,7 @@ export function DetailPane(props: DetailPaneProps) {
                   ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
               }}
             >
-              {unread.by.self ? 'your note is still unread' : 'an unread note, written before authors were recorded'}
+              {unread.by.self ? s.detail.unreadMine : s.detail.unreadLegacy}
               <span aria-hidden="true"> &#8595;</span>
             </button>
           ) : null}
@@ -372,8 +376,8 @@ export function DetailPane(props: DetailPaneProps) {
                 aria-expanded={!descriptionFolded}
                 onClick={() => setFolded(DESCRIPTION_FOLD, !descriptionFolded)}
               >
-                description
-                {descriptionFolded ? <span className="note">folded</span> : null}
+                {s.detail.description}
+                {descriptionFolded ? <span className="note">{s.detail.folded}</span> : null}
               </button>
             </h2>
             {/* always rendered so the fold can animate; inert while folded so nothing inside takes focus */}
@@ -386,7 +390,7 @@ export function DetailPane(props: DetailPaneProps) {
                   {full.description ? (
                     <MarkdownText text={full.description} />
                   ) : (
-                    <p className="empty">no description on this bead.</p>
+                    <p className="empty">{s.detail.noDescription}</p>
                   )}
                 </div>
               </div>
@@ -395,7 +399,7 @@ export function DetailPane(props: DetailPaneProps) {
 
           {issue.notes ? (
             <>
-              <h2 className="sub">notes</h2>
+              <h2 className="sub">{s.detail.notes}</h2>
               <div className={revealed?.field === 'notes' ? 'notes flash' : 'notes'} data-field="notes">
                 <MarkdownText text={issue.notes} />
               </div>
@@ -404,11 +408,11 @@ export function DetailPane(props: DetailPaneProps) {
 
           {props.links.length ? (
             <>
-              <h2 className="sub">links</h2>
+              <h2 className="sub">{s.detail.links}</h2>
               <div className="links">
                 {props.links.map((group) => (
                   <div className="lgroup" key={group.key}>
-                    <span className="lkind">{group.title}</span>
+                    <span className="lkind">{linkTitle(s, group)}</span>
                     <div className="lrows">
                       {group.ids.map((id) => {
                         const other = props.byId.get(id)
@@ -421,9 +425,9 @@ export function DetailPane(props: DetailPaneProps) {
                             style={axisStyle(other ? axisOf(other, config.lanes) : null, config) as CSSProperties}
                           >
                             <span className="mono lid">{shortId(id, repoName)}</span>
-                            <span className="lt">{other?.title ?? 'not in this ledger'}</span>
+                            <span className="lt">{other?.title ?? s.detail.notInLedger}</span>
                             {other && other.status !== 'open' ? (
-                              <span className="chip">{statusLabel(other.status)}</span>
+                              <span className="chip">{s.status[other.status]}</span>
                             ) : null}
                           </button>
                         )
@@ -436,15 +440,15 @@ export function DetailPane(props: DetailPaneProps) {
           ) : null}
 
           <h2 className="sub chsub">
-            <span>comments</span>
+            <span>{s.detail.commentsHeading}</span>
             {thread.length > 1 ? (
               <button
                 className="corder"
                 onClick={toggleOrder}
-                aria-label={`${order} first, switch to ${order === 'oldest' ? 'newest' : 'oldest'} first`}
-                title={`switch to ${order === 'oldest' ? 'newest' : 'oldest'} first`}
+                aria-label={`${s.detail.orderNow(order)}, ${s.detail.orderSwitch(order)}`}
+                title={s.detail.orderSwitch(order)}
               >
-                {order} first <span aria-hidden="true">{order === 'oldest' ? '\u2193' : '\u2191'}</span>
+                {s.detail.orderNow(order)} <span aria-hidden="true">{order === 'oldest' ? '\u2193' : '\u2191'}</span>
               </button>
             ) : null}
           </h2>
@@ -465,36 +469,36 @@ export function DetailPane(props: DetailPaneProps) {
               />
             ))
           ) : detailReady || full.comment_count === 0 ? (
-            <div className="empty">no comments yet.</div>
+            <div className="empty">{s.detail.noComments}</div>
           ) : (
-            <div className="empty">reading comments…</div>
+            <div className="empty">{s.detail.readingComments}</div>
           )}
 
           {detail && detail.sessions !== null ? (
             <>
-              <h2 className="sub">sessions that touched it</h2>
+              <h2 className="sub">{s.detail.sessions}</h2>
               {detail.sessions.length ? (
-                detail.sessions.map((s) => (
-                  <div className="srow" key={s.session_id}>
-                    <span className="sd mono">{formatShortDate(s.day)}</span>
+                detail.sessions.map((sess) => (
+                  <div className="srow" key={sess.session_id}>
+                    <span className="sd mono">{s.shortDate(sess.day)}</span>
                     <div className="smain">
-                      <a href={s.url} target="_blank" rel="noreferrer">
-                        {s.title}
+                      <a href={sess.url} target="_blank" rel="noreferrer">
+                        {sess.title}
                       </a>
-                      {s.prompt ? <div className="sprompt">{s.prompt}</div> : null}
+                      {sess.prompt ? <div className="sprompt">{sess.prompt}</div> : null}
                     </div>
-                    {s.agent ? <span className="chip">{s.agent}</span> : <span />}
+                    {sess.agent ? <span className="chip">{sess.agent}</span> : <span />}
                   </div>
                 ))
               ) : (
-                <div className="empty">no session mentions this id.</div>
+                <div className="empty">{s.detail.noSessions}</div>
               )}
             </>
           ) : null}
 
           {detail && detail.notes.length ? (
             <>
-              <h2 className="sub">in notes</h2>
+              <h2 className="sub">{s.detail.inNotes}</h2>
               {detail.notes.map((m, i) => (
                 <div className="memrow" key={`${m.file}:${m.line}:${i}`}>
                   <span className="mono">
@@ -520,6 +524,7 @@ export function DetailPane(props: DetailPaneProps) {
         onSend={props.onSend}
         sending={props.sending}
       />
+      </div>
     </main>
   )
 }

@@ -1,7 +1,8 @@
-// compact write controls in the detail header: priority, status verbs, labels
+// compact write controls in the detail header: priority, status, labels
 
 import { useState } from 'react'
 import type { Issue, Status } from '../api'
+import { useStrings } from '../i18n'
 
 interface WriteRowProps {
   issue: Issue
@@ -13,6 +14,14 @@ interface WriteRowProps {
 
 const PRIORITIES = [0, 1, 2, 3, 4]
 
+/** the statuses one click sets, in the order the switch shows them */
+export const SWITCH_STATUSES: readonly Status[] = ['open', 'in_progress', 'pinned', 'deferred', 'closed']
+
+/** the switch's segments: blocked is set by dependencies, not by hand, so it only shows while it holds */
+export function statusSegments(current: Status): Status[] {
+  return SWITCH_STATUSES.includes(current) ? [...SWITCH_STATUSES] : [...SWITCH_STATUSES, current]
+}
+
 /** bd accepts labels of 1 to 128 characters with no whitespace */
 function validLabel(value: string): boolean {
   return value.length > 0 && value.length <= 128 && !/\s/.test(value)
@@ -20,10 +29,8 @@ function validLabel(value: string): boolean {
 
 /** the second row of the detail header: everything writable except the note */
 export function WriteRow({ issue, knownLabels, onPriority, onStatus, onLabels }: WriteRowProps) {
+  const s = useStrings()
   const [draft, setDraft] = useState('')
-  const closed = issue.status === 'closed'
-  const deferred = issue.status === 'deferred'
-  const pinned = issue.status === 'pinned'
   const suggestions = knownLabels.filter((l) => !issue.labels.includes(l))
 
   const add = () => {
@@ -35,34 +42,53 @@ export function WriteRow({ issue, knownLabels, onPriority, onStatus, onLabels }:
 
   return (
     <div className="writerow">
-      <div className="stepper">
-        <span className="lab">priority</span>
+      <div className="stepper" role="group" aria-label={s.write.priority}>
+        <span className="lab">{s.write.priority}</span>
         {PRIORITIES.map((p) => (
           <button
             key={p}
             className={p === issue.priority ? 'on' : ''}
+            aria-pressed={p === issue.priority}
             onClick={() => onPriority(p)}
-            title={`set priority ${p}`}
+            title={s.write.setPriority(p)}
           >
             p{p}
           </button>
         ))}
       </div>
 
-      <div className="verbs">
-        {!deferred && !closed && !pinned ? <button onClick={() => onStatus('pinned')}>pin</button> : null}
-        {pinned ? <button onClick={() => onStatus('open')}>unpin</button> : null}
-        {!deferred && !closed && !pinned ? <button onClick={() => onStatus('deferred')}>defer</button> : null}
-        {!closed ? <button onClick={() => onStatus('closed')}>close</button> : null}
-        {closed || deferred ? <button onClick={() => onStatus('open')}>reopen</button> : null}
+      <div className="segments" role="group" aria-label={s.write.status}>
+        <span className="lab">{s.write.status}</span>
+        <span className="seg">
+          {statusSegments(issue.status).map((status) => {
+            const on = status === issue.status
+            return (
+              <button
+                key={status}
+                className={on ? `on st-${status}` : `st-${status}`}
+                aria-pressed={on}
+                disabled={!SWITCH_STATUSES.includes(status)}
+                onClick={() => {
+                  if (!on) onStatus(status)
+                }}
+              >
+                {s.status[status]}
+              </button>
+            )
+          })}
+        </span>
       </div>
 
       <div className="labeled">
-        <span>labels</span>
+        <span className="lab">{s.write.labels}</span>
         {issue.labels.map((label) => (
           <span className="chip" key={label}>
             {label}
-            <button onClick={() => onLabels({ remove: [label] })} title={`remove ${label}`}>
+            <button
+              onClick={() => onLabels({ remove: [label] })}
+              title={s.write.remove(label)}
+              aria-label={s.write.remove(label)}
+            >
               &times;
             </button>
           </span>
@@ -70,7 +96,8 @@ export function WriteRow({ issue, knownLabels, onPriority, onStatus, onLabels }:
         <input
           list="known-labels"
           value={draft}
-          placeholder="add label"
+          placeholder={s.write.addLabel}
+          aria-label={s.write.addLabel}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -89,7 +116,7 @@ export function WriteRow({ issue, knownLabels, onPriority, onStatus, onLabels }:
           ))}
         </datalist>
         <button className="add" onClick={add} disabled={!validLabel(draft.trim())}>
-          add
+          {s.write.add}
         </button>
       </div>
     </div>

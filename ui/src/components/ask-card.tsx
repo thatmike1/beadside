@@ -3,8 +3,7 @@
 import { useRef, useState } from 'react'
 import type { BoardConfig } from '../api'
 import type { Ask } from '../asks'
-import { raisedText } from '../asks'
-import { formatShortDate, formatShortDateTime, relativeTime } from '../format'
+import { raisedLine, useStrings } from '../i18n'
 
 interface AskCardProps {
   ask: Ask
@@ -14,15 +13,14 @@ interface AskCardProps {
   onAnswer: (text: string) => Promise<boolean>
 }
 
-const VIA: Record<string, string> = { hub: 'from the hub', beadside: 'here' }
-
 /** the open question with its options, or the answer waiting for a session */
 export function AskCard({ ask, short, config, onAnswer }: AskCardProps) {
+  const s = useStrings()
   const [text, setText] = useState('')
   const [sending, setSending] = useState(false)
   const boxRef = useRef<HTMLTextAreaElement>(null)
-  const raised = raisedText(ask)
-  const since = ask.first_raised ? `first ${formatShortDate(ask.first_raised)}` : ''
+  const raised = raisedLine(s, ask)
+  const since = ask.first_raised ? s.ask.first(s.shortDate(ask.first_raised)) : ''
   const empty = text.trim().length === 0
 
   const send = () => {
@@ -43,14 +41,14 @@ export function AskCard({ ask, short, config, onAnswer }: AskCardProps) {
   if (ask.answered) {
     const a = ask.answered
     return (
-      <section className="ask answered" aria-label="answered question">
+      <section className="ask answered" aria-label={s.ask.answeredLabel}>
         <div className="askhead">
-          <span className="asklabel">answered</span>
-          <span title={relativeTime(a.at)}>
-            {formatShortDateTime(a.at)}
-            {a.via && VIA[a.via] ? `, ${VIA[a.via]}` : ''}
+          <span className="asklabel">{s.ask.answered}</span>
+          <span title={s.relative(a.at)}>
+            {s.shortDateTime(a.at)}
+            {a.via && s.ask.via[a.via] ? `, ${s.ask.via[a.via]}` : ''}
           </span>
-          <span className="askwait">waiting for a session to act on it</span>
+          <span className="askwait">{s.ask.waiting}</span>
         </div>
         <p className="askq">{ask.question}</p>
         {a.text ? <p className="askanswer">{a.text}</p> : null}
@@ -59,9 +57,9 @@ export function AskCard({ ask, short, config, onAnswer }: AskCardProps) {
   }
 
   return (
-    <section className="ask" aria-label="question to answer">
+    <section className="ask" aria-label={s.ask.toAnswer}>
       <div className="askhead">
-        <span className="asklabel">{ask.title ?? 'question'}</span>
+        <span className="asklabel">{ask.title ?? s.ask.question}</span>
         {raised ? (
           <span className={(ask.days_raised ?? 0) >= 3 ? 'hot' : ''} title={since}>
             {raised}
@@ -69,7 +67,7 @@ export function AskCard({ ask, short, config, onAnswer }: AskCardProps) {
         ) : since ? (
           <span>{since}</span>
         ) : null}
-        {ask.due ? <span>due {formatShortDate(ask.due)}</span> : null}
+        {ask.due ? <span>{s.ask.due(s.shortDate(ask.due))}</span> : null}
       </div>
       <p className="askq">{ask.question}</p>
       {ask.why ? <p className="askwhy">{ask.why}</p> : null}
@@ -80,10 +78,10 @@ export function AskCard({ ask, short, config, onAnswer }: AskCardProps) {
               key={o.k}
               className={text.trim() === o.k ? 'askopt on' : 'askopt'}
               onClick={() => pick(o.k)}
-              title={o.k === ask.lean ? 'the lean' : undefined}
+              title={o.k === ask.lean ? s.ask.theLean : undefined}
             >
               <b>{o.k}</b>
-              {o.k === ask.lean ? <span className="asklean">lean</span> : null}
+              {o.k === ask.lean ? <span className="asklean">{s.ask.lean}</span> : null}
               {o.sub ? <span className="asksub">{o.sub}</span> : null}
             </button>
           ))}
@@ -92,8 +90,8 @@ export function AskCard({ ask, short, config, onAnswer }: AskCardProps) {
       <textarea
         ref={boxRef}
         value={text}
-        aria-label={`answer for ${short}`}
-        placeholder={ask.options.length ? 'pick an option or write your answer…' : 'write your answer…'}
+        aria-label={s.ask.answerFor(short)}
+        placeholder={ask.options.length ? s.ask.pickOrWrite : s.ask.write}
         rows={2}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
@@ -108,16 +106,17 @@ export function AskCard({ ask, short, config, onAnswer }: AskCardProps) {
       />
       <div className="askrow">
         <span className="chint">
-          answering writes it as your note on {short}
+          {s.ask.hintStart(short)}
           {config.note.addLabel ? (
             <>
-              , labels it <span className="mono">{config.note.addLabel}</span>
+              {s.ask.hintLabel}
+              <span className="mono">{config.note.addLabel}</span>
             </>
-          ) : null}{' '}
-          and marks the question answered.
+          ) : null}
+          {s.ask.hintEnd}
         </span>
         <button className="btn primary" onClick={send} disabled={empty || sending}>
-          {sending ? 'answering…' : 'answer'}
+          {sending ? s.ask.answering : s.ask.answer}
         </button>
       </div>
     </section>

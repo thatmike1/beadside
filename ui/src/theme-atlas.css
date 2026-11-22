@@ -1,0 +1,783 @@
+/* atlas theme (picked in the look menu or "theme": "atlas" in the config, set on <html data-skin="atlas">):
+   a navy index, the bead on a white card over a street-map ground, blue for actions, red only
+   for what needs you. light only: the selectors below outrank the dark tokens in styles.css, and
+   the look menu greys out its light/dark and font choices in this look */
+
+:root[data-skin='atlas'],
+:root[data-skin='atlas'][data-theme='dark'] {
+  color-scheme: light;
+  --atlas-navy: #161d5a;
+  --atlas-navy-deep: #0d1243;
+  --atlas-blue: #3a5bf0;
+  --atlas-blue-hover: #2a48d6;
+  --atlas-red: #d6203f;
+  --map: #e9e9ec;
+  --card: #ffffff;
+  --map-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1600 1000' preserveAspectRatio='xMidYMid slice'%3E %3Crect width='1600' height='1000' fill='%23e9e9ec'/%3E %3Cg fill='%23dfdfe3'%3E %3Cpath d='M340 220h330l20 110-340 20z'/%3E%3Cpath d='M760 120h300l-10 120-300-10z'/%3E%3Cpath d='M1180 270l220-10 20 150-240 10z'/%3E%3Cpath d='M760 480l330-40 20 150-340 30z'/%3E%3Cpath d='M1160 650h250l10 200-260-10z'/%3E%3Cpath d='M360 680l300-20 10 170-310 10z'/%3E%3Cpath d='M140 380l150 10-10 180-150-10z'/%3E%3Cpath d='M1460 420l120 10v170l-120-10z'/%3E %3C/g%3E %3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E %3Cpath d='M-40 860C180 800 300 640 470 610S760 560 900 470 1180 260 1660 230' stroke='%23d8d8de' stroke-width='60'/%3E %3Cpath d='M-40 860C180 800 300 640 470 610S760 560 900 470 1180 260 1660 230' stroke='%23d2d2d9' stroke-width='3' stroke-dasharray='2 14'/%3E %3Cg stroke='%23ffffff' stroke-width='18'%3E %3Cpath d='M-20 210C210 240 380 120 620 160S980 300 1180 250 1460 120 1640 150'/%3E %3Cpath d='M300 -20C330 200 250 420 330 640S360 900 320 1020'/%3E %3Cpath d='M-20 470C240 450 520 520 760 420S1120 380 1640 430'/%3E %3Cpath d='M1100 -20C1070 210 1180 420 1130 640S1170 900 1230 1020'/%3E %3C/g%3E %3Cg stroke='%23ffffff' stroke-width='9'%3E %3Cpath d='M-20 340L1640 360'/%3E%3Cpath d='M700 -20C690 300 760 600 720 1020'/%3E%3Cpath d='M-20 720C380 690 760 780 1640 730'/%3E%3Cpath d='M1420 -20C1390 330 1470 660 1440 1020'/%3E %3Cpath d='M520 160L640 420 560 640'/%3E%3Cpath d='M860 640L1060 720 1120 560'/%3E%3Cpath d='M120 -20L180 320 90 560 160 1020'/%3E%3Cpath d='M900 -20L960 260 880 470'/%3E %3Cpath d='M330 640L520 900'/%3E%3Cpath d='M1130 640L1320 560 1440 640'/%3E%3Cpath d='M760 420L900 470'/%3E %3C/g%3E %3Cg stroke='%23ffffff' stroke-width='4'%3E %3Cpath d='M-20 100L1640 70'/%3E%3Cpath d='M-20 590L1640 610'/%3E%3Cpath d='M-20 900L1640 880'/%3E%3Cpath d='M450 -20L480 1020'/%3E%3Cpath d='M600 -20L560 1020'/%3E%3Cpath d='M820 -20L860 1020'/%3E%3Cpath d='M990 -20L1000 1020'/%3E%3Cpath d='M1280 -20L1250 1020'/%3E%3Cpath d='M1540 -20L1560 1020'/%3E %3Cpath d='M200 400L420 560'/%3E%3Cpath d='M980 820L1180 760'/%3E%3Cpath d='M1200 120L1380 260'/%3E%3Cpath d='M1000 120L1060 330'/%3E%3Cpath d='M380 280L560 300'/%3E%3Cpath d='M1240 470L1300 620'/%3E%3Cpath d='M40 640L250 610'/%3E %3C/g%3E %3C/g%3E %3C/svg%3E");
+
+  --tint: 22 29 90;
+  --bg-read: var(--card);
+  --bg-index: var(--atlas-navy);
+  --ink: #17164a;
+  --ink-2: #44446a;
+  --ink-3: #6b6b88;
+  --prose: #2b2a4f;
+  --on-ink: #ffffff;
+  --ink-hover: var(--atlas-blue-hover);
+  --rule: rgb(var(--tint) / 0.12);
+  --rule-soft: rgb(var(--tint) / 0.07);
+  --fill: rgb(var(--tint) / 0.055);
+  --fill-2: rgb(var(--tint) / 0.1);
+  --signal: var(--atlas-red);
+  --signal-soft: rgba(214, 32, 63, 0.12);
+  --signal-ink: #a9182f;
+  --none: #6b6b88;
+  --none-fill: rgba(58, 91, 240, 0.1);
+  --lane-keep: 100%;
+  --notes-bg: rgba(58, 91, 240, 0.06);
+  --unread-bg: rgba(214, 32, 63, 0.05);
+  --unread-rule: var(--atlas-red);
+  --agent: #2a43b8;
+  --reply-bg: rgba(58, 91, 240, 0.1);
+  --reply-ink: #2a43b8;
+  --read-bg: rgba(58, 91, 240, 0.06);
+  --read-ink: #2a43b8;
+  --wip: #2a43b8;
+  --wip-fill: rgba(58, 91, 240, 0.12);
+  --shadow: rgba(22, 29, 90, 0.3);
+  --toast-action: #a9b8ff;
+  --toast-err: #ff9aaa;
+  --toast-hover: rgba(255, 255, 255, 0.12);
+  --focus: var(--atlas-blue);
+  --font-body: 'Rubik Variable', Rubik, system-ui, sans-serif;
+  --font-body-weight: 400;
+  --font-body-size: 15px;
+  --font-body-leading: 1.65;
+  --font-body-tracking: 0;
+  --row: 31px;
+}
+
+[data-skin='atlas'] body {
+  background: var(--map);
+}
+[data-skin='atlas'] :focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+[data-skin='atlas'] input:focus-visible,
+[data-skin='atlas'] textarea:focus-visible {
+  outline: 0;
+}
+
+/* ---------- frame: the map shows behind the rounded corner of the index ---------- */
+[data-skin='atlas'] .app {
+  background: var(--map) var(--map-image) center / cover no-repeat fixed;
+}
+
+/* ---------- index: the navy hero panel ---------- */
+[data-skin='atlas'] .index {
+  --tint: 255 255 255;
+  --ink: #ffffff;
+  --ink-2: #d3d5f5;
+  --ink-3: #a9acdf;
+  --rule: rgba(255, 255, 255, 0.14);
+  --rule-soft: rgba(255, 255, 255, 0.08);
+  --fill: rgba(255, 255, 255, 0.1);
+  --fill-2: rgba(255, 255, 255, 0.16);
+  --signal: #ff6b81;
+  --signal-soft: rgba(255, 107, 129, 0.16);
+  --signal-ink: #ffffff;
+  --none: #a9acdf;
+  --none-fill: rgba(255, 255, 255, 0.08);
+  --lane-keep: 70%;
+  --wip: #c7d1ff;
+  --wip-fill: rgba(143, 166, 255, 0.2);
+  --read-bg: rgba(255, 255, 255, 0.12);
+  --read-ink: #c7d1ff;
+  --on-ink: var(--atlas-navy);
+  --focus: #8fa6ff;
+  color: var(--ink);
+  position: relative;
+  z-index: 1;
+}
+[data-skin='atlas'] .ihead {
+  padding-top: 26px;
+}
+[data-skin='atlas'] .brand {
+  gap: 12px;
+}
+[data-skin='atlas'] .brand b {
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+}
+[data-skin='atlas'] .brand-dot {
+  display: inline;
+  font-style: normal;
+  color: var(--atlas-red);
+}
+[data-skin='atlas'] .brand span {
+  letter-spacing: 0.02em;
+}
+[data-skin='atlas'] .brand .stale {
+  margin-left: auto;
+}
+[data-skin='atlas'] .brand .stale + .keyhelp,
+[data-skin='atlas'] .brand .stale + .lookmenu,
+[data-skin='atlas'] .lookmenu + .keyhelp {
+  margin-left: 0;
+}
+[data-skin='atlas'] .lookmenu {
+  margin-left: auto;
+}
+[data-skin='atlas'] .keyhelp {
+  margin-left: auto;
+}
+[data-skin='atlas'] .brand .qmark {
+  border-radius: 2px;
+}
+[data-skin='atlas'] .counts {
+  margin-top: 12px;
+}
+/* what needs you reads as a red pill, not just red ink */
+[data-skin='atlas'] .counts .hot,
+[data-skin='atlas'] .counts .hot em {
+  color: #ffffff;
+}
+[data-skin='atlas'] .counts .hot {
+  background: var(--atlas-red);
+  border-radius: 2px;
+  padding: 1px 7px 2px;
+  white-space: nowrap;
+}
+
+/* views and search */
+[data-skin='atlas'] .bar {
+  padding-top: 10px;
+}
+[data-skin='atlas'] .views button.on {
+  font-weight: 500;
+  border-bottom-color: #ffffff;
+}
+[data-skin='atlas'] .views .n.hot {
+  color: #ffffff;
+  background: var(--atlas-red);
+  border-radius: 2px;
+  padding: 0 5px 1px;
+  font-weight: 500;
+}
+[data-skin='atlas'] .search,
+[data-skin='atlas'] .capture {
+  position: relative;
+}
+[data-skin='atlas'] .search > .icon,
+[data-skin='atlas'] .capture > .icon {
+  display: block;
+  position: absolute;
+  left: 10px;
+  top: 9px;
+  color: var(--ink-3);
+  pointer-events: none;
+}
+[data-skin='atlas'] .capture > .icon {
+  left: calc(var(--pad-index) + 10px);
+  top: 13px;
+}
+[data-skin='atlas'] .search input,
+[data-skin='atlas'] .capture input {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  padding: 8px 11px 8px 34px;
+  color: #ffffff;
+}
+[data-skin='atlas'] .search input:focus,
+[data-skin='atlas'] .capture input:focus {
+  background: rgba(255, 255, 255, 0.13);
+  box-shadow: inset 0 0 0 2px var(--atlas-blue);
+}
+[data-skin='atlas'] .capture {
+  padding-bottom: 14px;
+}
+/* the icon padding would squeeze the query once the scopes show: they drop under it instead */
+[data-skin='atlas'] .search {
+  flex-wrap: wrap;
+}
+[data-skin='atlas'] .search input {
+  flex-basis: 150px;
+}
+/* the clear button beside the box does this; the browser's own would make two */
+[data-skin='atlas'] .search input::-webkit-search-cancel-button {
+  display: none;
+}
+[data-skin='atlas'] .scopes button {
+  border-radius: 2px;
+}
+[data-skin='atlas'] .scopes button.on {
+  background: var(--atlas-blue);
+  color: #ffffff;
+}
+
+/* sections */
+[data-skin='atlas'] .sec {
+  margin-top: 18px;
+}
+[data-skin='atlas'] .sec:first-child {
+  margin-top: 2px;
+}
+[data-skin='atlas'] .sechead {
+  align-items: center;
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: #ffffff;
+}
+[data-skin='atlas'] .sec.folded .sechead {
+  color: var(--ink-2);
+}
+[data-skin='atlas'] .sechead > .icon.fold {
+  display: block;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-left: -2px;
+  color: var(--ink-3);
+  transform: rotate(90deg);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+[data-skin='atlas'] .sec.folded .sechead > .icon.fold {
+  transform: rotate(0deg);
+}
+[data-skin='atlas'] .sechead.hot > .icon + span {
+  color: #ffffff;
+  background: var(--atlas-red);
+  border-radius: 2px;
+  padding: 0 7px 1px;
+}
+[data-skin='atlas'] .sechead.hot .n {
+  color: #ffffff;
+  font-weight: 600;
+}
+[data-skin='atlas'] .secrule {
+  opacity: 0.6;
+}
+
+/* rows */
+[data-skin='atlas'] .row .rid {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+[data-skin='atlas'] .row.unread .rt {
+  color: #ffffff;
+  font-weight: 600;
+}
+[data-skin='atlas'] .row.sel,
+[data-skin='atlas'] .irow.sel,
+[data-skin='atlas'] .irow.sel:hover,
+[data-skin='atlas'] .hit.sel {
+  background: var(--atlas-blue);
+}
+[data-skin='atlas'] .row.sel .rt,
+[data-skin='atlas'] .row.sel .rid,
+[data-skin='atlas'] .row.sel .rp,
+[data-skin='atlas'] .irow.sel .iact,
+[data-skin='atlas'] .irow.sel .why.hot,
+[data-skin='atlas'] .hit.sel .rt,
+[data-skin='atlas'] .hit.sel .rid,
+[data-skin='atlas'] .hit.sel .rp,
+[data-skin='atlas'] .hit.sel .hwhere,
+[data-skin='atlas'] .hit.sel .hex {
+  color: #ffffff;
+  opacity: 1;
+}
+[data-skin='atlas'] .row.sel .chip,
+[data-skin='atlas'] .hit.sel .chip,
+[data-skin='atlas'] .irow.sel .readmark,
+[data-skin='atlas'] .irow.sel .acts button,
+[data-skin='atlas'] .irow.sel .acts input[type='date'] {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+[data-skin='atlas'] .chip,
+[data-skin='atlas'] .readmark,
+[data-skin='atlas'] .whotag,
+[data-skin='atlas'] .unreadtag,
+[data-skin='atlas'] .replytag,
+[data-skin='atlas'] .readtag {
+  border-radius: 2px;
+}
+[data-skin='atlas'] .index .chip.hot,
+[data-skin='atlas'] .row.sel .chip.hot {
+  background: var(--atlas-red);
+  color: #ffffff;
+}
+[data-skin='atlas'] .waitdot {
+  width: 7px;
+  height: 7px;
+  background: var(--atlas-red);
+  box-shadow: 0 0 0 2px rgba(214, 32, 63, 0.3);
+}
+[data-skin='atlas'] .hit mark {
+  background: rgba(255, 107, 129, 0.28);
+}
+/* lanes read as a small square of their colour, like the dot in the card header */
+[data-skin='atlas'] .mark {
+  font-size: 0;
+  display: grid;
+  place-items: center;
+  opacity: 1;
+}
+[data-skin='atlas'] .mark::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--axis);
+}
+[data-skin='atlas'] .row.child .mark::before {
+  width: 5px;
+  height: 5px;
+}
+[data-skin='atlas'] .row.sel .mark::before {
+  box-shadow: 0 0 0 1.5px #ffffff;
+}
+[data-skin='atlas'] .kids::before {
+  opacity: 0.45;
+}
+[data-skin='atlas'] .acts button,
+[data-skin='atlas'] .acts input[type='date'] {
+  border-radius: 2px;
+}
+[data-skin='atlas'] .acts input[type='date'] {
+  color-scheme: dark;
+}
+[data-skin='atlas'] .cleared b {
+  font-weight: 500;
+  text-transform: uppercase;
+}
+[data-skin='atlas'] .cleared button {
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.3);
+  background: none;
+}
+
+/* the key list and the look menu open on card white, so they take the card's inks back */
+[data-skin='atlas'] .index .keys,
+[data-skin='atlas'] .index .looks {
+  --tint: 22 29 90;
+  --ink: #17164a;
+  --ink-2: #44446a;
+  --ink-3: #6b6b88;
+  --rule: rgba(22, 29, 90, 0.12);
+  color: var(--ink);
+  background: var(--card);
+  border-radius: 3px;
+}
+[data-skin='atlas'] .index .keys {
+  min-width: 330px;
+}
+
+/* the one-line key hint closes the panel */
+[data-skin='atlas'] .hint {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 11px var(--pad-index) 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+  color: var(--ink-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+[data-skin='atlas'] .hint kbd {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  padding: 1px 5px;
+  margin-right: 2px;
+  color: #ffffff;
+}
+[data-skin='atlas'] .hint .keysbtn {
+  margin-left: auto;
+  color: var(--ink-3);
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+[data-skin='atlas'] .hint .keysbtn:hover,
+[data-skin='atlas'] .hint .keysbtn.on {
+  color: #ffffff;
+}
+
+/* ---------- the card ---------- */
+[data-skin='atlas'] .rline .axis {
+  color: color-mix(in oklab, var(--axis) 58%, var(--atlas-navy));
+  font-weight: 500;
+}
+[data-skin='atlas'] .rline .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+}
+[data-skin='atlas'] .rline .stat.st-in_progress {
+  color: var(--wip);
+}
+[data-skin='atlas'] h1 {
+  color: var(--atlas-navy);
+  font-size: 30px;
+  line-height: 1.2;
+  font-weight: 500;
+  letter-spacing: -0.012em;
+  margin-top: 16px;
+  text-wrap: balance;
+}
+[data-skin='atlas'] h2.sub {
+  color: var(--atlas-navy);
+  font-size: 13.5px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  margin-top: 32px;
+}
+[data-skin='atlas'] .dfold {
+  color: var(--atlas-navy);
+}
+[data-skin='atlas'] .prose .md,
+[data-skin='atlas'] .notes,
+[data-skin='atlas'] .comment,
+[data-skin='atlas'] .ask {
+  max-width: 72ch;
+}
+[data-skin='atlas'] .notes,
+[data-skin='atlas'] .ask,
+[data-skin='atlas'] .comment.unread {
+  border-radius: 2px;
+}
+[data-skin='atlas'] .comment .chead b {
+  font-weight: 500;
+  color: var(--atlas-navy);
+}
+[data-skin='atlas'] .comment.mine .chead b {
+  color: var(--atlas-red);
+}
+[data-skin='atlas'] .comment.agent .chead b {
+  color: var(--agent);
+}
+[data-skin='atlas'] .md a {
+  color: var(--atlas-blue);
+  text-decoration-color: rgba(58, 91, 240, 0.35);
+}
+[data-skin='atlas'] .unreadjump {
+  color: var(--atlas-red);
+}
+[data-skin='atlas'] .lrow:hover,
+[data-skin='atlas'] .srow a:hover,
+[data-skin='atlas'] .memrow a:hover {
+  color: var(--atlas-blue);
+}
+
+/* the ask and try cards: square, the options are blue outlines */
+[data-skin='atlas'] .askopt {
+  border-radius: 2px;
+}
+[data-skin='atlas'] .askopt:hover {
+  box-shadow: inset 0 0 0 2px rgba(58, 91, 240, 0.45);
+}
+[data-skin='atlas'] .askopt.on {
+  box-shadow: inset 0 0 0 2px var(--atlas-blue);
+}
+[data-skin='atlas'] .ask textarea {
+  border-radius: 2px;
+}
+[data-skin='atlas'] .ask textarea:focus {
+  box-shadow: inset 0 0 0 2px var(--atlas-blue);
+}
+[data-skin='atlas'] .ask.try {
+  box-shadow: inset 2px 0 0 var(--atlas-blue);
+}
+
+/* ---------- the status route, drawn in the signal red ---------- */
+[data-skin='atlas'] .route {
+  --route-done: #c81c38;
+  --route-ahead: #9b9bb4;
+  list-style: none;
+  display: flex;
+  margin: 24px 0 0;
+  padding: 0 34px 36px 4px;
+  max-width: 560px;
+}
+[data-skin='atlas'] .route .stop {
+  display: flex;
+  align-items: center;
+}
+[data-skin='atlas'] .route .stop + .stop {
+  flex: 1 1 0;
+}
+[data-skin='atlas'] .route .leg {
+  flex: 1 1 auto;
+  height: 22px;
+  margin: 0 4px;
+  overflow: visible;
+}
+[data-skin='atlas'] .route .leg path {
+  stroke: var(--route-ahead);
+  stroke-width: 2px;
+  stroke-dasharray: 3 5;
+  stroke-linecap: round;
+  opacity: 0.55;
+}
+[data-skin='atlas'] .route .leg.done path {
+  stroke: var(--route-done);
+  stroke-width: 3px;
+  stroke-dasharray: none;
+  opacity: 1;
+}
+[data-skin='atlas'] .route .pin {
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+}
+[data-skin='atlas'] .route .node {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow: inset 0 0 0 2px var(--route-ahead);
+}
+[data-skin='atlas'] .route .done .node {
+  box-shadow: inset 0 0 0 3px var(--route-done);
+}
+[data-skin='atlas'] .route .here .node {
+  width: 17px;
+  height: 17px;
+  box-shadow:
+    inset 0 0 0 4px var(--route-done),
+    0 0 0 5px rgba(200, 28, 56, 0.12);
+}
+[data-skin='atlas'] .route .slabel {
+  position: absolute;
+  top: 19px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  font-size: 12.5px;
+  line-height: 1.3;
+  color: var(--ink-3);
+  text-align: center;
+}
+[data-skin='atlas'] .route .stop:first-child .slabel {
+  left: -4px;
+  transform: none;
+  text-align: left;
+}
+[data-skin='atlas'] .route .stop:last-child .slabel {
+  left: auto;
+  right: -4px;
+  transform: none;
+  text-align: right;
+}
+[data-skin='atlas'] .route .here .slabel {
+  color: var(--atlas-navy);
+  font-weight: 500;
+}
+[data-skin='atlas'] .route .sdate {
+  display: block;
+  font-size: 11.75px;
+  color: var(--ink-3);
+}
+/* the route draws itself in when a bead opens, leg by leg */
+[data-skin='atlas'] .route .leg.done {
+  animation: route-draw 640ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+[data-skin='atlas'] .route .stop:nth-child(3) .leg.done {
+  animation-delay: 220ms;
+}
+[data-skin='atlas'] .route .here .node {
+  animation: route-stop 420ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both;
+}
+@keyframes route-draw {
+  from {
+    clip-path: inset(-6px 100% -6px 0);
+  }
+  to {
+    clip-path: inset(-6px 0 -6px 0);
+  }
+}
+@keyframes route-stop {
+  from {
+    transform: scale(0.4);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-skin='atlas'] .route .leg.done,
+  [data-skin='atlas'] .route .here .node,
+  [data-skin='atlas'] .sechead > .icon.fold {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* ---------- controls: solid blue buttons ---------- */
+[data-skin='atlas'] .stepper button {
+  border-radius: 2px;
+}
+[data-skin='atlas'] .stepper button.on {
+  background: var(--atlas-navy);
+  color: #ffffff;
+}
+[data-skin='atlas'] .seg {
+  background: none;
+  padding: 0;
+  gap: 0;
+  box-shadow: inset 0 0 0 2px var(--atlas-blue);
+  border-radius: 2px;
+}
+[data-skin='atlas'] .seg button {
+  color: var(--atlas-blue);
+  font-weight: 500;
+  padding: 3px 11px;
+  border-radius: 0;
+}
+[data-skin='atlas'] .seg button:hover:not([disabled]):not(.on) {
+  background: rgba(58, 91, 240, 0.08);
+  color: var(--atlas-blue);
+}
+[data-skin='atlas'] .seg button.on {
+  background: var(--atlas-blue);
+  color: #ffffff;
+}
+[data-skin='atlas'] .seg button.on.st-blocked {
+  background: var(--ink-3);
+}
+[data-skin='atlas'] .labeled button.add {
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--atlas-blue);
+  color: var(--atlas-blue);
+  font-weight: 500;
+  border-radius: 2px;
+}
+[data-skin='atlas'] .labeled button.add:hover:not([disabled]) {
+  background: var(--atlas-blue);
+  color: #ffffff;
+}
+[data-skin='atlas'] .labeled button.add[disabled],
+[data-skin='atlas'] .labeled button.add[disabled]:hover {
+  opacity: 1;
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--rule);
+  color: var(--ink-3);
+}
+[data-skin='atlas'] .labeled input {
+  border-radius: 2px;
+  background: #f3f3f6;
+}
+[data-skin='atlas'] .labeled input:focus {
+  box-shadow: inset 0 0 0 2px var(--atlas-blue);
+}
+[data-skin='atlas'] .composer {
+  background: var(--card);
+  box-shadow: none;
+  border-top: 1px solid var(--rule);
+  padding-top: 14px;
+}
+[data-skin='atlas'] .composer textarea {
+  background: #f5f5f8;
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px var(--rule);
+}
+[data-skin='atlas'] .composer textarea:focus {
+  background: #ffffff;
+  box-shadow: inset 0 0 0 2px var(--atlas-blue);
+}
+[data-skin='atlas'] .btn {
+  border-radius: 2px;
+  font-weight: 500;
+  background: none;
+  box-shadow: inset 0 0 0 2px var(--atlas-blue);
+  color: var(--atlas-blue);
+}
+[data-skin='atlas'] .btn:hover:not([disabled]) {
+  background: var(--atlas-blue);
+  color: #ffffff;
+}
+[data-skin='atlas'] .btn.primary {
+  padding: 9px 18px;
+  background: var(--atlas-blue);
+  box-shadow: none;
+  color: #ffffff;
+}
+[data-skin='atlas'] .btn.primary:hover:not([disabled]) {
+  background: var(--atlas-blue-hover);
+}
+[data-skin='atlas'] .btn.primary[disabled] {
+  opacity: 1;
+  background: #e8ebfb;
+  color: #7f87b8;
+}
+[data-skin='atlas'] .clear input {
+  accent-color: var(--atlas-blue);
+}
+[data-skin='atlas'] .toast {
+  background: var(--atlas-navy);
+  border-radius: 2px;
+}
+
+/* ---------- wide: the index's hero corner, the bead as a card over the map ---------- */
+@media (min-width: 761px) {
+  [data-skin='atlas'] .index {
+    border-top-right-radius: 56px;
+  }
+  [data-skin='atlas'] .read {
+    background: none;
+    padding: 22px clamp(14px, 2.2vw, 34px) 0;
+  }
+  [data-skin='atlas'] .sheet {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    max-width: 780px;
+    background: var(--card);
+    border-radius: 3px 3px 0 0;
+    box-shadow:
+      0 1px 2px rgba(22, 29, 90, 0.06),
+      0 24px 48px -28px rgba(22, 29, 90, 0.38);
+  }
+  [data-skin='atlas'] .rhead {
+    padding-top: 20px;
+  }
+}
+
+/* ---------- phone: one pane at a time, full bleed; the navy list, then the white bead ---------- */
+@media (max-width: 760px) {
+  [data-skin='atlas'] .read {
+    background: var(--card);
+  }
+  [data-skin='atlas'] .rline {
+    background: var(--card);
+  }
+  [data-skin='atlas'] h1 {
+    font-size: 24px;
+  }
+  [data-skin='atlas'] .route {
+    padding-right: 40px;
+  }
+  [data-skin='atlas'] .capture > .icon {
+    top: 15px;
+  }
+  [data-skin='atlas'] .hint {
+    display: none;
+  }
+}
+@media (pointer: coarse) {
+  [data-skin='atlas'] .hint {
+    display: none;
+  }
+}
