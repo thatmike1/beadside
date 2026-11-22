@@ -1,16 +1,9 @@
 // the index while a search is active: ranked hits with where each matched and an excerpt
 
-import type { SearchField, SearchHit, SearchResult, SearchScope } from '../api'
+import type { SearchHit, SearchResult, SearchScope } from '../api'
 import { shortId } from '../model'
-import { highlightRuns, statusLabel } from '../format'
-
-const FIELD_LABEL: Record<SearchField, string> = {
-  id: 'id',
-  title: 'title',
-  description: 'description',
-  notes: 'notes',
-  comment: 'comment',
-}
+import { highlightRuns } from '../format'
+import { useStrings, type Strings } from '../i18n'
 
 function Marked({ text, terms }: { text: string; terms: string[] }) {
   return (
@@ -20,13 +13,13 @@ function Marked({ text, terms }: { text: string; terms: string[] }) {
   )
 }
 
-function where(hit: SearchHit): string {
+function where(hit: SearchHit, s: Strings): string {
   if (hit.field === 'comment' && hit.comment) {
     const by = hit.comment.by
-    const name = by.self ? 'you' : by.kind === 'unknown' ? 'author unknown' : by.name
-    return `comment · ${name}`
+    const name = by.self ? s.search.you : by.kind === 'unknown' ? s.search.authorUnknown : by.name
+    return `${s.search.fields.comment} · ${name}`
   }
-  return FIELD_LABEL[hit.field]
+  return s.search.fields[hit.field]
 }
 
 interface SearchResultsProps {
@@ -42,18 +35,15 @@ interface SearchResultsProps {
 
 /** replaces the sections while the search box holds a query */
 export function SearchResults(props: SearchResultsProps) {
+  const s = useStrings()
   const { query, scope, result, loading, error, repoName, selected, onPick } = props
-  const kind = scope === 'all' ? '' : `${scope} `
 
   let status: string
-  if (error) status = `search failed: ${error}`
-  else if (loading && !result) status = 'searching…'
+  if (error) status = s.search.failed(error)
+  else if (loading && !result) status = s.search.searching
   else if (!result) status = ''
-  else if (!result.total) status = `no ${kind}bead matches “${query.trim()}”`
-  else {
-    const shown = result.hits.length < result.total ? `, top ${result.hits.length} shown` : ''
-    status = `${result.total} ${kind}${result.total === 1 ? 'bead' : 'beads'}${shown}${loading ? ' · updating…' : ''}`
-  }
+  else if (!result.total) status = s.search.none(scope, query.trim())
+  else status = s.search.found(result.total, scope, result.hits.length, loading)
 
   return (
     <div className="results" aria-busy={loading}>
@@ -73,10 +63,10 @@ export function SearchResults(props: SearchResultsProps) {
                   <span className="rt">
                     <Marked text={hit.title} terms={result.terms} />
                   </span>
-                  {hit.status !== 'open' ? <span className="chip">{statusLabel(hit.status)}</span> : null}
+                  {hit.status !== 'open' ? <span className="chip">{s.status[hit.status]}</span> : null}
                   <span className="mono rp">p{hit.priority}</span>
                 </span>
-                <span className="hwhere">{where(hit)}</span>
+                <span className="hwhere">{where(hit, s)}</span>
                 {hit.excerpt ? (
                   <span className="hex">
                     <Marked text={hit.excerpt} terms={result.terms} />

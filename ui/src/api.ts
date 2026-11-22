@@ -64,7 +64,7 @@ export interface Comment {
 }
 
 export type SearchScope = 'all' | 'open' | 'closed'
-export type SearchField = 'id' | 'title' | 'description' | 'notes' | 'comment'
+export type SearchField = 'id' | 'title' | 'label' | 'description' | 'notes' | 'comment'
 
 export interface SearchHit {
   id: string
@@ -180,7 +180,12 @@ export interface DerivedConfig {
   hotChips: string[]
 }
 
+/** the interface language and date format */
+export type Locale = 'en' | 'cs'
+
 export interface BoardConfig {
+  /** absent from a server older than locales: english */
+  locale?: Locale
   /** the configured human, or null when the server derived one from git */
   human: { id: string; name: string } | null
   agentsview: string | null

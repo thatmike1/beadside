@@ -5,6 +5,7 @@ import type { BoardConfig, Issue } from '../api'
 import type { BoardRow } from '../model'
 import { shortId, subsOf } from '../model'
 import { axisStyle, laneGlyph } from '../format'
+import { useStrings, type Strings } from '../i18n'
 
 export interface RowProps {
   row: BoardRow
@@ -16,11 +17,11 @@ export interface RowProps {
   onSelect: (id: string) => void
 }
 
-function chipsFor(issue: Issue, config: BoardConfig): { text: string; hot: boolean }[] {
+function chipsFor(issue: Issue, config: BoardConfig, s: Strings): { text: string; hot: boolean }[] {
   const out: { text: string; hot: boolean }[] = []
-  if (issue.status === 'in_progress') out.push({ text: 'in progress', hot: false })
-  if (issue.status === 'deferred') out.push({ text: 'deferred', hot: false })
-  if (issue.status === 'closed') out.push({ text: 'closed', hot: false })
+  if (issue.status === 'in_progress') out.push({ text: s.status.in_progress, hot: false })
+  if (issue.status === 'deferred') out.push({ text: s.status.deferred, hot: false })
+  if (issue.status === 'closed') out.push({ text: s.status.closed, hot: false })
   for (const flag of config.derived.allFlags) {
     if (config.thoughts && flag === config.thoughts.label) continue
     if (!issue.labels.includes(flag)) continue
@@ -39,6 +40,7 @@ export function Row({
   showWaitDot,
   onSelect,
 }: RowProps) {
+  const s = useStrings()
   const { issue } = row
   const dim = issue.status === 'deferred' || issue.status === 'closed'
   const unread = config.note.addLabel ? issue.labels.includes(config.note.addLabel) : false
@@ -65,8 +67,8 @@ export function Row({
       <span className="mono rid">{shortId(issue.id, repoName)}</span>
       <span className="rt">{issue.title}</span>
       <span className="chips">
-        {showWaitDot && row.waiting ? <span className="waitdot" title="waiting on you" /> : null}
-        {chipsFor(issue, config).map((chip) => (
+        {showWaitDot && row.waiting ? <span className="waitdot" title={s.counts.waiting} /> : null}
+        {chipsFor(issue, config, s).map((chip) => (
           <span key={chip.text} className={chip.hot ? 'chip hot' : 'chip'}>
             {chip.text}
           </span>

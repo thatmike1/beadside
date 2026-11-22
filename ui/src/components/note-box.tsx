@@ -2,6 +2,7 @@
 
 import type { RefObject } from 'react'
 import type { BoardConfig, Issue } from '../api'
+import { useStrings } from '../i18n'
 
 interface NoteBoxProps {
   issue: Issue
@@ -18,6 +19,7 @@ interface NoteBoxProps {
 
 /** write box whose send runs `bd comment` and updates labels via config */
 export function NoteBox(props: NoteBoxProps) {
+  const s = useStrings()
   const { issue, short, config, noteRef, value, onChange, clear, onClearChange, onSend, sending } =
     props
   const author = config.human ? ` --author ${config.human.id}` : ''
@@ -30,7 +32,8 @@ export function NoteBox(props: NoteBoxProps) {
         <textarea
           ref={noteRef}
           value={value}
-          placeholder={`write a note to the next session that opens ${short}…`}
+          placeholder={s.note.placeholder(short)}
+          aria-label={s.note.placeholder(short)}
           onChange={(e) => onChange(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -44,16 +47,19 @@ export function NoteBox(props: NoteBoxProps) {
         />
         <div className="crow">
           <span className="chint">
+            {s.note.runs}{' '}
+            <span className="mono">
+              bd comments add {short}
+              {author}
+            </span>
             {config.note.addLabel ? (
               <>
-                sending runs <span className="mono">bd comments add {short}{author}</span> and labels the bead{' '}
-                <span className="mono">{config.note.addLabel}</span>, so the next session reads it
-                first.
+                {' '}
+                {s.note.labels} <span className="mono">{config.note.addLabel}</span>
+                {s.note.readsFirst}
               </>
             ) : (
-              <>
-                sending runs <span className="mono">bd comments add {short}{author}</span>.
-              </>
+              '.'
             )}
           </span>
           <span className="cbtns">
@@ -64,11 +70,11 @@ export function NoteBox(props: NoteBoxProps) {
                   checked={clear}
                   onChange={(e) => onClearChange(e.target.checked)}
                 />
-                and clear {presentClears.join(', ')}
+                {s.note.clear(presentClears)}
               </label>
             ) : null}
             <button className="btn primary" onClick={onSend} disabled={empty || sending}>
-              {sending ? 'sending…' : 'send note'}
+              {sending ? s.note.sending : s.note.send}
             </button>
           </span>
         </div>

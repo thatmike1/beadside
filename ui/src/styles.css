@@ -885,11 +885,42 @@ textarea {
   background: var(--ink);
   color: var(--on-ink);
 }
-.verbs {
+/* the status switch: one segment per status, the current one inked */
+.segments {
   display: flex;
-  gap: 10px;
+  align-items: center;
+  gap: 4px;
 }
-.verbs button,
+.segments .lab {
+  margin-right: 2px;
+}
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  background: var(--fill);
+  border-radius: 4px;
+  padding: 2px;
+}
+.seg button {
+  white-space: nowrap;
+  padding: 1px 9px;
+  border-radius: 3px;
+  color: var(--ink-2);
+  font-size: 12.75px;
+}
+.seg button:hover:not([disabled]):not(.on) {
+  background: var(--fill-2);
+  color: var(--ink);
+}
+.seg button.on {
+  background: var(--ink);
+  color: var(--on-ink);
+  cursor: default;
+}
+.seg button[disabled] {
+  cursor: default;
+}
 .labeled button.add {
   padding: 2px 9px;
   border-radius: 3px;
@@ -897,7 +928,6 @@ textarea {
   color: var(--ink-2);
   font-size: 12.75px;
 }
-.verbs button:hover,
 .labeled button.add:hover {
   background: var(--fill-2);
   color: var(--ink);
@@ -1917,7 +1947,7 @@ h2.chsub {
     font-size: 13px;
     padding: 6px 8px;
   }
-  .verbs button,
+  .seg button,
   .labeled button.add {
     font-size: 14px;
     padding: 6px 13px;

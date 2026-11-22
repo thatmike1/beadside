@@ -118,7 +118,13 @@ export interface HumanConfig {
   name?: string | null
 }
 
+/** the interface language and date format */
+export type Locale = 'en' | 'cs'
+
+export const LOCALES: readonly Locale[] = ['en', 'cs']
+
 export interface BoardConfig {
+  locale?: Locale | null
   human?: HumanConfig | null
   agentsview?: string | null
   notesDir?: string | null
@@ -138,6 +144,7 @@ export interface BoardConfig {
 }
 
 export interface ResolvedBoardConfig {
+  locale: Locale
   /** null means main.ts falls back to `human:<git user.name>` */
   human: HumanIdentity | null
   agentsview: string | null
@@ -219,6 +226,14 @@ function validateLabelArray(val: unknown, field: string): string[] {
   })
 }
 
+function validateChoice<T extends string>(val: unknown, field: string, choices: readonly T[], fallback: T): T {
+  if (val === undefined || val === null) return fallback
+  if (typeof val !== 'string' || !choices.includes(val as T)) {
+    throw new ConfigError(`${field} must be one of ${choices.join(', ')}`, field)
+  }
+  return val as T
+}
+
 /** validates and resolves a raw config object against schema and defaults */
 export function resolveConfig(raw: unknown): ResolvedBoardConfig {
   if (raw === undefined || raw === null) raw = {}
@@ -226,6 +241,8 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
     throw new ConfigError('config must be an object', 'config')
   }
   const obj = raw as Record<string, unknown>
+
+  const locale = validateChoice(obj['locale'], 'locale', LOCALES, 'en')
 
   let human: HumanIdentity | null = null
   if (obj['human'] !== undefined && obj['human'] !== null) {
@@ -434,6 +451,7 @@ export function resolveConfig(raw: unknown): ResolvedBoardConfig {
   }
 
   return {
+    locale,
     human,
     agentsview,
     notesDir,

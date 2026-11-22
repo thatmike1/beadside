@@ -21,8 +21,18 @@ export interface Toaster {
   runUndo: () => void
 }
 
+/** the toast's own words; english unless the board passes its locale's */
+export interface ToastCopy {
+  undone: string
+  undoFailed: string
+}
+
+const EN_COPY: ToastCopy = { undone: 'undone', undoFailed: 'undo failed' }
+
 /** toast state with its own timer, reset on every new message */
-export function useToast(): Toaster {
+export function useToast(copy: ToastCopy = EN_COPY): Toaster {
+  const copyRef = useRef(copy)
+  copyRef.current = copy
   const [toast, setToast] = useState<ToastState | null>(null)
   const timer = useRef<number | null>(null)
   const seq = useRef(0)
@@ -66,8 +76,8 @@ export function useToast(): Toaster {
       if (!current?.undo) return current
       void current
         .undo()
-        .then(() => show('undone'))
-        .catch((error: unknown) => fail(error instanceof Error ? error.message : 'undo failed'))
+        .then(() => show(copyRef.current.undone))
+        .catch((error: unknown) => fail(error instanceof Error ? error.message : copyRef.current.undoFailed))
       return null
     })
   }, [show, fail])

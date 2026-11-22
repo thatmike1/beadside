@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#e9e6df">
 <script>
 // before first paint, so a dark board never flashes light and the body font never swaps late.
-// keep in step with ui/src/use-theme.ts and ui/src/use-font.ts
+// keep in step with ui/src/use-theme.ts, ui/src/use-font.ts and ui/src/use-locale.ts
 (function () {
   var theme = null
   try { theme = localStorage.getItem('beadside:theme') } catch (e) {}
@@ -17,6 +17,9 @@
   var font = null
   try { font = localStorage.getItem('beadside:font') } catch (e) {}
   document.documentElement.dataset.font = font === 'ubuntu' ? 'ubuntu' : 'figtree'
+  var locale = null
+  try { locale = localStorage.getItem('beadside:locale') } catch (e) {}
+  if (locale === 'cs') document.documentElement.lang = 'cs'
 })()
 </script>
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">

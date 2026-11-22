@@ -94,6 +94,7 @@ describe('human identity config', () => {
 describe('resolveConfig defaults', () => {
   it('returns all defaults when given empty object or null', () => {
     const config = resolveConfig({})
+    expect(config.locale).toBe('en')
     expect(config.human).toBeNull()
     expect(config.agentsview).toBeNull()
     expect(config.notesDir).toBeNull()
@@ -108,6 +109,11 @@ describe('resolveConfig defaults', () => {
     expect(config.capture).toEqual({ labels: [] })
     expect(config.derived.allFlags).toEqual([])
     expect(config.derived.hotChips).toEqual([])
+  })
+
+  it('passes a chosen locale through', () => {
+    expect(resolveConfig({ locale: 'cs' }).locale).toBe('cs')
+    expect(resolveConfig({ locale: null }).locale).toBe('en')
   })
 
   it('fills inbox labels from note.offerToClear unless inbox names its own', () => {
@@ -211,6 +217,16 @@ describe('validation errors', () => {
     expect(() => resolveConfig({ thoughts: { label: 'with space' } })).toThrowError(
       /thoughts\.label/,
     )
+  })
+
+  it('rejects an unknown locale and names the field', () => {
+    expect(() => resolveConfig({ locale: 3 })).toThrowError(ConfigError)
+    expect(() => resolveConfig({ locale: 'de' })).toThrowError(/locale must be one of en, cs/)
+    try {
+      resolveConfig({ locale: 'de' })
+    } catch (err) {
+      expect((err as ConfigError).field).toBe('locale')
+    }
   })
 
   it('rejects invalid flags and capture shape', () => {
