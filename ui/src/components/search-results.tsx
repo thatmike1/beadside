@@ -7,6 +7,7 @@ import { highlightRuns, statusLabel } from '../format'
 const FIELD_LABEL: Record<SearchField, string> = {
   id: 'id',
   title: 'title',
+  label: 'label',
   description: 'description',
   notes: 'notes',
   comment: 'comment',

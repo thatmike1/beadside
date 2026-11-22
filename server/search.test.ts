@@ -96,6 +96,33 @@ describe('searchIssues', () => {
   })
 })
 
+describe('label matches', () => {
+  const tagged = [
+    entry('repo-l1', { title: 'Detekce dopravních značek', labels: ['znacky', 'needs-human'], description: 'lead' }),
+    entry('repo-l2', { title: 'LiDAR', labels: ['lokalizace'], description: 'mentions znacky in passing' }),
+    entry('repo-l3', { title: 'Značky v Brně', labels: ['detekce'] }),
+  ]
+
+  it('finds a bead by its label and leads with the description', () => {
+    const { hits } = searchIssues(tagged, 'needs-human', { human })
+    expect(hits).toHaveLength(1)
+    expect(hits[0]).toMatchObject({ id: 'repo-l1', field: 'label', excerpt: 'lead', fields: ['label'] })
+  })
+
+  it('ranks a label above a body mention and below a title', () => {
+    const { hits } = searchIssues(tagged, 'znacky', { human })
+    expect(hits.map((h) => h.id)).toEqual(['repo-l3', 'repo-l1', 'repo-l2'])
+    expect(hits[0]).toMatchObject({ field: 'title' })
+    expect(hits[1]).toMatchObject({ field: 'label', fields: ['label'] })
+    expect(hits[2]).toMatchObject({ field: 'description' })
+  })
+
+  it('lets a term in a label and a term in the title match together, accents ignored', () => {
+    expect(searchIssues(tagged, 'brne DETEKCE', { human }).hits.map((h) => h.id)).toEqual(['repo-l3'])
+    expect(searchIssues(tagged, 'lidar lokalizace', { human }).hits.map((h) => h.id)).toEqual(['repo-l2'])
+  })
+})
+
 describe('excerptAround', () => {
   it('cuts around the match on word boundaries with ellipses', () => {
     const text = `${'lead '.repeat(40)}the needle is here ${'tail '.repeat(60)}`

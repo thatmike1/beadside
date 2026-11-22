@@ -64,7 +64,7 @@ export interface Comment {
 }
 
 export type SearchScope = 'all' | 'open' | 'closed'
-export type SearchField = 'id' | 'title' | 'description' | 'notes' | 'comment'
+export type SearchField = 'id' | 'title' | 'label' | 'description' | 'notes' | 'comment'
 
 export interface SearchHit {
   id: string

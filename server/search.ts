@@ -1,11 +1,11 @@
-// full-text search over issue ids, titles, descriptions, notes and comments. the http route
+// full-text search over issue ids, titles, labels, descriptions, notes and comments. the http route
 // and the `beadside search` cli both call `searchIssues`, so a query returns the same hits
 // on the board and for an agent.
 import { classifyAuthor, type Author, type HumanIdentity } from './authors'
 import type { IssueWithComments, Status } from './bd'
 
 export type SearchScope = 'all' | 'open' | 'closed'
-export type SearchField = 'id' | 'title' | 'description' | 'notes' | 'comment'
+export type SearchField = 'id' | 'title' | 'label' | 'description' | 'notes' | 'comment'
 
 export const SCOPES: readonly SearchScope[] = ['all', 'open', 'closed']
 
@@ -122,7 +122,8 @@ interface Candidate {
   order: number
 }
 
-const BODY_BONUS: Record<SearchField, number> = { id: 0, title: 0, description: 3, notes: 2, comment: 1 }
+// a label hit outranks the body: a label is a deliberate tag, the body only mentions a word
+const BODY_BONUS: Record<SearchField, number> = { id: 0, title: 0, label: 4, description: 3, notes: 2, comment: 1 }
 
 /** scores one text field: the whole query as a phrase beats every term, which beats some */
 function scoreText(folded: string, terms: string[], phrase: string, field: SearchField): number {
@@ -184,6 +185,7 @@ export function searchIssues(corpus: IssueWithComments[], query: string, options
       }
     }
     consider('title', issue.title)
+    consider('label', issue.labels.join(' '))
     consider('description', issue.description)
     consider('notes', typeof issue.notes === 'string' ? issue.notes : '')
     comments.forEach((c, index) =>
@@ -201,7 +203,8 @@ export function searchIssues(corpus: IssueWithComments[], query: string, options
     // every term is somewhere in the issue but no single field holds them all
     const score = best && best.score >= 80 ? best.score : 20
     const field = best?.field ?? [...fields][0] ?? 'title'
-    const lead = field === 'id' || field === 'title'
+    // the row shows the id and title, and a label says nothing more: lead with the description
+    const lead = field === 'id' || field === 'title' || field === 'label'
     const excerpt = lead
       ? excerptAround(issue.description, [], '')
       : excerptAround(best?.text ?? '', terms, phrase)
@@ -216,7 +219,7 @@ export function searchIssues(corpus: IssueWithComments[], query: string, options
       field,
       excerpt,
       comment: field === 'comment' ? (best?.comment ?? null) : null,
-      fields: (['id', 'title', 'description', 'notes', 'comment'] as const).filter((f) => fields.has(f)),
+      fields: (['id', 'title', 'label', 'description', 'notes', 'comment'] as const).filter((f) => fields.has(f)),
       score,
     })
   }

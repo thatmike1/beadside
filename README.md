@@ -1,6 +1,6 @@
 # beadside
 
-Local web reader for a [beads](https://github.com/gastownhall/beads) backlog. It opens on an inbox of what you can clear in one action. Index on the left with sections and lanes, and the selected bead always open on the right with its Markdown-rendered description, notes, comments, sessions, and linked notes. Sending a note from the composer appends a comment under your own author id and can flag the bead so your coding agent reads it first on its next run. Search covers ids, titles, descriptions, notes and comments, on the board and from a terminal.
+Local web reader for a [beads](https://github.com/gastownhall/beads) backlog. It opens on an inbox of what you can clear in one action. Index on the left with sections and lanes, and the selected bead always open on the right with its Markdown-rendered description, notes, comments, sessions, and linked notes. Sending a note from the composer appends a comment under your own author id and can flag the bead so your coding agent reads it first on its next run. Search covers ids, titles, labels, descriptions, notes and comments, on the board and from a terminal.
 
 ![beadside](docs/screenshot.png)
 

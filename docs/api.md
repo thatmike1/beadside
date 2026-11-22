@@ -66,7 +66,7 @@ interface Comment {
 }
 
 type SearchScope = 'all' | 'open' | 'closed'   // open = everything not closed, deferred and parked ideas included
-type SearchField = 'id' | 'title' | 'description' | 'notes' | 'comment'
+type SearchField = 'id' | 'title' | 'label' | 'description' | 'notes' | 'comment'
 
 interface SearchHit {
   id: string

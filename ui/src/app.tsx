@@ -380,7 +380,9 @@ export function App() {
       const verb =
         status === 'closed' || status === 'deferred' || status === 'pinned'
           ? status
-          : before === 'pinned'
+          : status === 'in_progress'
+            ? 'started'
+            : before === 'pinned'
             ? 'unpinned'
             : 'reopened'
       void write(id, {

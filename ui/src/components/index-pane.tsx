@@ -214,7 +214,7 @@ export function IndexPane(props: IndexPaneProps) {
             type="search"
             aria-label="search beads"
             placeholder="search"
-            title="titles, descriptions, notes and comments, closed beads too (s)"
+            title="titles, ids, labels, descriptions, notes and comments, closed beads too (s)"
             onChange={(e) => {
               if (!searching && e.target.value.trim() && listRef.current) boardScroll.current = listRef.current.scrollTop
               search.onChange(e.target.value)
