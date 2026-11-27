@@ -648,7 +648,12 @@ export function createBoard(config: AppConfig): Board {
         502,
       )
     }
-    return c.json({ ...(await detail(id)), verdict: outcome.last })
+    // every write landed: a failed read of the fresh detail must not turn that into an error a caller retries
+    let fresh: Record<string, unknown> = {}
+    try {
+      fresh = await detail(id)
+    } catch {}
+    return c.json({ ...fresh, verdict: outcome.last })
   })
 
   // the inbox's memory, shared by every board on this beads database through `bd kv`
