@@ -104,6 +104,7 @@ describe('tryEntries', () => {
     const out = tryEntries(corpus, 'try-it', 'try')
     expect(out.map((e) => e.id)).toEqual(['r-6', 'r-2', 'r-1', 'r-5'])
     expect(out[3]?.try).toBeNull()
+    expect(out[0]?.labels).toEqual(['try-it'])
   })
 })
 

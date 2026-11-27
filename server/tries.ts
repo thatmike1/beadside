@@ -48,6 +48,8 @@ export interface TryEntry {
   id: string
   title: string
   status: Issue['status']
+  /** the bead's labels, so a reader can apply the contract's own filters (a couldn't-check still flagged for agents) */
+  labels: string[]
   /** null when the bead carries the label but no kit the board can read */
   try: TryKit | null
 }
@@ -282,7 +284,7 @@ export function tryEntries(corpus: IssueWithComments[], label: string, key: stri
   const out: TryEntry[] = []
   for (const { issue } of corpus) {
     if (issue.status === 'closed' || !issue.labels.includes(label) || isDeferred(issue, now)) continue
-    out.push({ id: issue.id, title: issue.title, status: issue.status, try: parseTry(issue['metadata'], key) })
+    out.push({ id: issue.id, title: issue.title, status: issue.status, labels: [...issue.labels], try: parseTry(issue['metadata'], key) })
   }
   const app = (e: TryEntry) => e.try?.app ?? '￿'
   return out.sort((a, b) => app(a).localeCompare(app(b)) || (a.try?.title ?? a.title).localeCompare(b.try?.title ?? b.title))
